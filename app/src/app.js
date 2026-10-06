@@ -70,6 +70,18 @@ const saved = readPlan(storage),
   initial = readSearchState(window.location.href);
 if (!initial.hasFilterCondition && !initial.filters.levelDefaultSuppressed)
   initial.filters.minLevel = 200;
+function sideEventFiltersFrom(filters) {
+  const result = defaultFilters();
+  for (const key of ['query', 'date', 'topic', 'venue'])
+    result[key] = Array.isArray(result[key]) ? [...(filters[key] || [])] : filters[key] || '';
+  result.minLevel = null;
+  result.levelDefaultSuppressed = true;
+  return result;
+}
+const initialSessionFilters =
+  initial.kind === 'sideEvents' ? { ...defaultFilters(), minLevel: 200 } : initial.filters;
+const initialSideEventFilters =
+  initial.kind === 'sideEvents' ? sideEventFiltersFrom(initial.filters) : sideEventFiltersFrom({});
 let recommendationInterests = [];
 try {
   const stored = JSON.parse(storage.getItem('reinvent-recommendation-interests') || '[]');
@@ -107,7 +119,9 @@ const state = {
   reservationBusy: false,
   plan: runtimeMode === 'demo' ? saved.ids : [],
   warning: runtimeMode === 'demo' ? saved.warning : '',
-  filters: initial.filters,
+  filters: initial.kind === 'sideEvents' ? initialSideEventFilters : initialSessionFilters,
+  sessionFilters: initialSessionFilters,
+  sideEventFilters: initialSideEventFilters,
   view: initial.explicit ? initial.view : rememberedView === 'compact' ? 'compact' : 'card',
   sort: initial.sort,
   exploreKind: initial.kind,
@@ -239,6 +253,9 @@ function quickPressed(d) {
   if (d.key === 'includeUnleveled') return state.filters.includeUnleveled;
   return state.filters[d.key].includes(d.value);
 }
+function activeFilterKeys() {
+  return state.exploreKind === 'sideEvents' ? ['date', 'topic', 'venue'] : MULTI_KEYS;
+}
 function renderQuick() {
   const defs = state.exploreKind === 'sideEvents' ? [] : quickDefinitions();
   $('#quickFilters').innerHTML = defs
@@ -251,20 +268,20 @@ function renderQuick() {
 function renderApplied() {
   const chips = [];
   let count = 0;
-  for (const key of MULTI_KEYS)
+  for (const key of activeFilterKeys())
     for (const value of state.filters[key]) {
       count++;
       chips.push(
         ui`<button class="filter-chip" data-remove-filter="${key}" data-filter-value="${esc(value)}" aria-label="${t(FACET_LABELS[key])} ${esc(value)}を解除">${t(FACET_LABELS[key])}: ${esc(key === 'date' ? dateLabel(value) : value)} <span aria-hidden="true">×</span></button>`,
       );
     }
-  if (Number.isFinite(state.filters.minLevel)) {
+  if (state.exploreKind !== 'sideEvents' && Number.isFinite(state.filters.minLevel)) {
     count++;
     chips.push(
       ui`<button class="filter-chip" data-remove-filter="minLevel" aria-label="Level ${state.filters.minLevel}以上を解除">Level ${state.filters.minLevel}以上 <span aria-hidden="true">×</span></button>`,
     );
   }
-  if (state.filters.includeUnleveled) {
+  if (state.exploreKind !== 'sideEvents' && state.filters.includeUnleveled) {
     count++;
     chips.push(
       t(
@@ -272,7 +289,7 @@ function renderApplied() {
       ),
     );
   }
-  if (state.filters.from || state.filters.to) {
+  if (state.exploreKind !== 'sideEvents' && (state.filters.from || state.filters.to)) {
     count++;
     chips.push(
       ui`<button class="filter-chip" data-remove-filter="time" aria-label="時間の条件を解除">${state.filters.fit === 'contained' ? t('枠内') : 'Time'}: ${esc(state.filters.from || '00:00')}–${esc(state.filters.to || '24:00')} <span aria-hidden="true">×</span></button>`,
@@ -988,21 +1005,29 @@ function renderSearch() {
 function commitSearch({ push = true } = {}) {
   clearTimeout(searchTimer);
   displayLimit = 40;
+  if (state.exploreKind === 'sideEvents') state.sideEventFilters = structuredClone(state.filters);
+  else state.sessionFilters = structuredClone(state.filters);
   syncURL(push);
   renderSearch();
 }
 function resetFilters(includeQuery = false) {
-  state.filters = {
-    ...defaultFilters(),
-    levelDefaultSuppressed: true,
-    query: includeQuery ? '' : state.filters.query,
-  };
+  const query = includeQuery ? '' : state.filters.query;
+  state.filters =
+    state.exploreKind === 'sideEvents'
+      ? sideEventFiltersFrom({ query })
+      : { ...defaultFilters(), levelDefaultSuppressed: true, query };
   $('#q').value = state.filters.query;
   commitSearch();
 }
 function setExploreKind(kind) {
+  if (state.exploreKind === 'sideEvents') state.sideEventFilters = structuredClone(state.filters);
+  else state.sessionFilters = structuredClone(state.filters);
   state.exploreView = 'sessions';
   state.exploreKind = kind;
+  state.filters = structuredClone(
+    kind === 'sideEvents' ? state.sideEventFilters : state.sessionFilters,
+  );
+  $('#q').value = state.filters.query;
   buildFacets();
   commitSearch();
 }
@@ -1214,6 +1239,7 @@ function findGap(date, from, to) {
     to: to === '24:00' ? '' : to,
     fit: 'contained',
   };
+  state.sessionFilters = structuredClone(state.filters);
   $('#q').value = '';
   commitSearch();
   changeActive('explore', { restore: false });
@@ -1257,18 +1283,18 @@ function openFilters({ preserveDraft = false } = {}) {
     draftTo = $('#to').value,
     draftFit = $('#fitContained').checked;
   if (!preserveDraft || !state.draft) state.draft = structuredClone(state.filters);
-  const renderFacet = (key) =>
-    ui`<fieldset class="facet-group"><legend>${t(FACET_LABELS[key])}</legend>${facets[key]?.length > 12 ? ui`<input class="facet-search" type="search" data-facet-search="${key}" aria-label="${t(FACET_LABELS[key])}の候補を検索" placeholder="${t(FACET_LABELS[key])}を検索">` : ''}<div class="facet-options" id="facet-${key}">${renderFacetOptions(key)}</div></fieldset>`;
+  const sideMode = state.exploreKind === 'sideEvents';
+  $('.time-facet').hidden = sideMode;
+  const renderFacet = (key) => {
+    const label = sideMode && key === 'topic' ? t('カテゴリ') : t(FACET_LABELS[key]);
+    return ui`<fieldset class="facet-group"><legend>${label}</legend>${facets[key]?.length > 12 ? ui`<input class="facet-search" type="search" data-facet-search="${key}" aria-label="${label}の候補を検索" placeholder="${label}を検索">` : ''}<div class="facet-options" id="facet-${key}">${renderFacetOptions(key)}</div></fieldset>`;
+  };
   $('#dateFacet').innerHTML = renderFacet('date');
-  $('#facetFields').innerHTML = [
-    'sessionType',
-    'level',
-    'track',
-    'topic',
-    'service',
-    'venue',
-    'speaker',
-  ]
+  $('#facetFields').innerHTML = (
+    sideMode
+      ? ['topic', 'venue']
+      : ['sessionType', 'level', 'track', 'topic', 'service', 'venue', 'speaker']
+  )
     .map(renderFacet)
     .join('');
   $('#from').value = preserveDraft ? draftFrom : state.filters.from;
@@ -2048,10 +2074,16 @@ document.addEventListener('click', (event) => {
 });
 window.addEventListener('popstate', () => {
   const parsed = readSearchState(window.location.href);
-  state.filters = parsed.filters;
   state.view = parsed.view;
   state.sort = parsed.sort;
   state.exploreKind = parsed.kind;
+  if (parsed.kind === 'sideEvents') {
+    state.filters = sideEventFiltersFrom(parsed.filters);
+    state.sideEventFilters = structuredClone(state.filters);
+  } else {
+    state.filters = parsed.filters;
+    state.sessionFilters = structuredClone(state.filters);
+  }
   buildFacets();
   $('#q').value = state.filters.query;
   displayLimit = 40;

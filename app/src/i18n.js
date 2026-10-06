@@ -427,6 +427,7 @@ const english = Object.freeze({
   '概要はまだ公開されていません。': 'Abstract not published yet.',
   会場: 'Venue',
   場所: 'Location',
+  カテゴリ: 'Category',
   登壇者: 'Speakers',
   登壇者未定: 'Speakers TBD',
   '時間未確認 · 出典確認日 ': 'Time unverified · Source checked ',

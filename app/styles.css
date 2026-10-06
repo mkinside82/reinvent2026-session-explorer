@@ -1642,6 +1642,9 @@ input[type='checkbox'] {
   font-size: 0.875rem;
   font-weight: 650;
 }
+.time-facet[hidden] {
+  display: none !important;
+}
 .filter-datetime .facet-options {
   max-height: 110px;
 }

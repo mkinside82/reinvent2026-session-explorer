@@ -5,6 +5,9 @@ import { t } from '../src/i18n.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const raw = JSON.parse(await readFile(new URL('../sessions.demo.json', import.meta.url), 'utf8'));
+const sideEvents = JSON.parse(
+  await readFile(new URL('../side-events.verified.json', import.meta.url), 'utf8'),
+);
 class Element {
   constructor() {
     this.value = '';
@@ -95,7 +98,11 @@ for (const width of [1440, 390])
     ];
     let responseData = large,
       fetchFails = false;
-    globalThis.fetch = async () => ({ ok: !fetchFails, json: async () => responseData });
+    globalThis.fetch = async (url) => ({
+      ok: !fetchFails,
+      json: async () =>
+        String(url).includes('side-events.verified.json') ? sideEvents : responseData,
+    });
     await import(`../src/app.js?viewport=${width}`);
     await tick();
     assert.equal(
@@ -287,4 +294,20 @@ for (const width of [1440, 390])
     assert(get('#clearDialog').open);
     click('#confirmClear');
     assert.match(get('#planContent').innerHTML, /My Planはまだ空です/);
+    const sessionCount = get('#resultCount').textContent;
+    click('#showSessions');
+    click('#showSideEvents');
+    assert.match(get('#resultCount').textContent, /サイドイベント/);
+    click('#openFilters');
+    assert(get('#facetFields').innerHTML.includes('data-facet="topic"'));
+    assert(get('#facetFields').innerHTML.includes('カテゴリ'));
+    assert(get('#facetFields').innerHTML.includes('data-facet="venue"'));
+    assert(!get('#facetFields').innerHTML.includes('data-facet="level"'));
+    assert.equal(get('.time-facet').hidden, true);
+    pick('topic', 'Hackathon');
+    get('#filterForm').dispatch('submit');
+    assert.match(get('#resultCount').textContent, /^1 /);
+    assert.match(get('#cards').innerHTML, /Road to re:Invent 2026/);
+    click('#showSessionItems');
+    assert.equal(get('#resultCount').textContent, sessionCount);
   });
