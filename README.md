@@ -62,7 +62,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - [Builder IDサインインとPKCE](https://docs.aws.amazon.com/events/latest/devguide/auth-signing-in.html)
 - [セッション一覧（ListSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-listsessions.html)
 - [参加者スケジュール（GetSchedule）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-getschedule.html)
-- [個人予定の登録・更新・削除](https://docs.aws.amazon.com/events/latest/devguide/rest-op-createpersonaltime.html)
+- [個人予定の登録](https://docs.aws.amazon.com/events/latest/devguide/rest-op-createpersonaltime.html)・[更新](https://docs.aws.amazon.com/events/latest/devguide/rest-op-updatepersonaltime.html)・[削除](https://docs.aws.amazon.com/events/latest/devguide/rest-op-deletepersonaltime.html)
 - [セッション予約（ReserveSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-reservesessions.html)
 - [予約取消（CancelReservation）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-cancelreservation.html)
 - [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
@@ -80,7 +80,7 @@ LiveモードとGoogle Calendarの設定手順は[アプリガイド（日本語
 
 - AWSアクセストークンはローカルサーバーのメモリに、リフレッシュトークンはmacOS Keychainに置きます。トークンを静的ファイルやブラウザーのLocal Planへ保存しません。
 - AWSカタログのキャッシュはMac内のApplication Supportにアカウント別で保存されます。
-- My Planの手動候補はブラウザーの`localStorage`にAWSアカウントとイベントごとに分けて保存されます。LiveではAWS Scheduleの予約済みセッションと個人予定を非同期で同じ予定表に統合し、お気に入りは専用タブから選べます。個人予定は読み取り専用で、予約情報をAWSへ書き込む操作は明示確認が必要です。
+- My Planの手動候補はブラウザーの`localStorage`にAWSアカウントとイベントごとに分けて保存されます。LiveではAWS Scheduleの予約済みセッションと個人予定を非同期で同じ予定表に統合し、お気に入りは専用タブから選べます。個人予定の追加・更新・削除はAWS Scheduleを再読込して照合します。予約情報をAWSへ書き込む操作は明示確認が必要です。
 - My Planは同じブラウザープロファイル・同じlocalhost originで再利用できます。ブラウザーデータを消去した場合や、localhostのポートが変わった場合は別の保存領域になり、他のブラウザーやMacへも自動移行しません。
 - Google Calendarへの変更は、対象予定を確認する画面を経て、利用者が同期・削除を選択した場合だけ送信します。
 

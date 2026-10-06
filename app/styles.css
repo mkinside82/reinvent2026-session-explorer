@@ -64,3 +64,4 @@
 
 .schedule-status{grid-column:1/-1;margin:0;color:var(--muted);font-size:.75rem;line-height:1.45}.schedule-status.is-error{color:var(--danger)}.plan-item-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.plan-item-actions .status-tag{flex:none}
 .status-tag.personal-time{color:var(--accent);background:var(--accent-soft)}
+.personal-time-form{display:grid;gap:12px;margin-top:16px}.personal-time-form>label{display:grid;gap:4px;font-size:.875rem}.personal-time-form textarea{min-height:80px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;color:var(--text)}.personal-time-form .time-inputs{margin-top:2px}.personal-time-form .confirmation-actions{flex-wrap:wrap}

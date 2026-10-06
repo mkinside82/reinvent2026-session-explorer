@@ -30,6 +30,7 @@ function localDateTimeEpoch(date,time,zone){
   const check=partsInZone(candidate,zone);
   return Number(check.year)===year&&Number(check.month)===month&&Number(check.day)===day&&Number(check.hour)===hour&&Number(check.minute)===minute?candidate:null;
 }
+export function venueLocalDateTimeToUtc(date,time){const epoch=localDateTimeEpoch(date,time,'America/Los_Angeles');return epoch===null?null:new Date(epoch).toISOString().slice(0,19);}
 function venueLocalTime(time){
   const date=typeof time.date==='string'?time.date:'',start=typeof time.time==='string'?time.time:'',length=typeof time.length==='string'?time.length:'';
   const timezone=typeof time.timezone==='string'?time.timezone:'';
@@ -83,7 +84,8 @@ export function adaptAwsPersonalTimes(raw){
     const startEpoch=Date.parse(`${start}Z`),endEpoch=Date.parse(`${end}Z`);if(endEpoch<=startEpoch)return null;
     const localStart=partsInZone(startEpoch,'America/Los_Angeles'),localEnd=partsInZone(endEpoch,'America/Los_Angeles'),sameDate=localStart.year===localEnd.year&&localStart.month===localEnd.month&&localStart.day===localEnd.day;
     const id=`aws-personal:${row.personalTimeId}`;if(seen.has(id))return null;seen.add(id);
-    return normalizeSession({id,code:'PERSONAL',title:typeof row.title==='string'?row.title:'Personal time',abstract:typeof row.description==='string'?row.description:'',date:`${localStart.year}-${localStart.month}-${localStart.day}`,startTime:`${localStart.hour}:${localStart.minute}`,endTime:sameDate?`${localEnd.hour}:${localEnd.minute}`:'',sessionType:'Personal time',venue:typeof row.location==='string'?row.location:'',dataSource:'aws-personal-time',itemType:'personalTime',uiState:{personalTime:true}});
+    const item=normalizeSession({id,code:'PERSONAL',title:typeof row.title==='string'?row.title:'Personal time',abstract:typeof row.description==='string'?row.description:'',date:`${localStart.year}-${localStart.month}-${localStart.day}`,startTime:`${localStart.hour}:${localStart.minute}`,endTime:sameDate?`${localEnd.hour}:${localEnd.minute}`:'',sessionType:'Personal time',venue:typeof row.location==='string'?row.location:'',dataSource:'aws-personal-time',itemType:'personalTime',uiState:{personalTime:true}});
+    return item?{...item,personalTimeId:row.personalTimeId,sourceStartDateTime:start,sourceEndDateTime:end}:null;
   }).filter(Boolean);
 }
 export function normalizeSideEvent(row){
@@ -138,6 +140,7 @@ export async function fetchLiveCatalog({signal}={}){
 export async function fetchLiveSchedule(){return apiRequest('/api/live/schedule');}
 export async function reserveLiveSessions(sessionIds){return apiRequest('/api/live/reservations',{method:'POST',body:{sessionIds}});}
 export async function cancelLiveReservations(sessionIds){return apiRequest('/api/live/reservations/cancel',{method:'POST',body:{sessionIds}});}
+export async function saveLivePersonalTime(input){return apiRequest('/api/live/personal-time',{method:'POST',body:input});}
 export async function googleCalendarStatus(){return apiRequest('/api/google/status');}
 export async function configureGoogleCalendar(clientId){return apiRequest('/api/google/configure',{method:'POST',body:{clientId}});}
 export async function connectGoogleCalendar(){return apiRequest('/api/google/connect',{method:'POST',body:{}});}

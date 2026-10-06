@@ -903,6 +903,96 @@ async fn live_schedule(State(state): State<AppState>) -> Response {
 #[serde(rename_all = "camelCase")]
 struct ReserveSessionsRequest { session_ids: Vec<String> }
 
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PersonalTimeRequest {
+    action: String,
+    #[serde(default)] personal_time_id: String,
+    #[serde(default)] title: String,
+    #[serde(default)] description: String,
+    #[serde(default)] start_date_time: String,
+    #[serde(default)] end_date_time: String,
+    #[serde(default)] location: String,
+}
+
+fn valid_utc_datetime(value: &str) -> Option<i64> {
+    if value.len() != 19 || value.as_bytes().get(4) != Some(&b'-') || value.as_bytes().get(7) != Some(&b'-') || value.as_bytes().get(10) != Some(&b'T') || value.as_bytes().get(13) != Some(&b':') || value.as_bytes().get(16) != Some(&b':') { return None; }
+    let number = |a: usize,b: usize| value.get(a..b)?.parse::<i64>().ok();
+    let (year,month,day,hour,minute,second)=(number(0,4)?,number(5,7)?,number(8,10)?,number(11,13)?,number(14,16)?,number(17,19)?);
+    if !value.bytes().enumerate().all(|(i,b)| [4,7,10,13,16].contains(&i) || b.is_ascii_digit()) || year < 2000 || !(1..=12).contains(&month) || !(0..=23).contains(&hour) || !(0..=59).contains(&minute) || second != 0 { return None; }
+    let leap=year%4==0&&(year%100!=0||year%400==0);
+    let days=[31,if leap{29}else{28},31,30,31,30,31,31,30,31,30,31];
+    if day<1||day>days[(month-1) as usize] { return None; }
+    let mut days_before=(year-1970)*365+(year-1969)/4-(year-1901)/100+(year-1601)/400;
+    for m in 1..month { days_before+=days[(m-1) as usize]; }
+    Some((((days_before+day-1)*24+hour)*60)+minute)
+}
+
+fn personal_time_matches(row: &Value, input: &PersonalTimeRequest) -> bool {
+    row.get("title").and_then(Value::as_str)==Some(input.title.trim()) && row.get("description").and_then(Value::as_str)==Some(input.description.trim()) && row.get("startDateTime").and_then(Value::as_str)==Some(input.start_date_time.as_str()) && row.get("endDateTime").and_then(Value::as_str)==Some(input.end_date_time.as_str()) && row.get("location").and_then(Value::as_str).unwrap_or("")==input.location.trim()
+}
+
+async fn aws_personal_time_write(state: &AppState, method: Method, url: &str, body: Option<Value>) -> Result<reqwest::Response, &'static str> {
+    let mut refreshed=false;
+    loop {
+        let access=load_access_token(state,refreshed).await?;
+        let builder=match method { Method::POST=>state.0.client.post(url),Method::PUT=>state.0.client.put(url),Method::DELETE=>state.0.client.delete(url),_=>return Err("REQUEST_METHOD_INVALID") };
+        let builder=builder.bearer_auth(access);
+        let result=if let Some(body)=&body { builder.json(body).send().await } else { builder.send().await };
+        match result {
+            Ok(response) if response.status()==ReqwestStatus::UNAUTHORIZED&&!refreshed=>{refreshed=true;continue;}
+            Ok(response)=>return Ok(response),
+            Err(_)=>return Err("NETWORK_ERROR"),
+        }
+    }
+}
+
+async fn live_personal_time(State(state): State<AppState>, Json(input): Json<PersonalTimeRequest>) -> Response {
+    let account_id={state.0.auth.lock().await.account_id.clone()};
+    if account_id.is_none(){return response_error(StatusCode::UNAUTHORIZED,"SIGN_IN_REQUIRED");}
+    if !["create","update","delete"].contains(&input.action.as_str()){return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_ACTION_INVALID");}
+    let id_valid=!input.personal_time_id.is_empty()&&input.personal_time_id.len()<=128&&input.personal_time_id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_');
+    if input.action!="create"&&!id_valid{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_ID_INVALID");}
+    let title=input.title.trim();let description=input.description.trim();let location=input.location.trim();
+    if input.action!="delete" {
+        if title.is_empty()||title.chars().count()>128||description.is_empty()||description.chars().count()>250||location.chars().count()>255{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_FIELDS_INVALID");}
+        let start=valid_utc_datetime(&input.start_date_time);let end=valid_utc_datetime(&input.end_date_time);
+        let (Some(start),Some(end))=(start,end) else{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_DATETIME_INVALID");};
+        if end<=start||(end-start)%5!=0{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_INTERVAL_INVALID");}
+    }
+    let schedule_url=format!("{API_ROOT}/events/{EVENT_ID}/schedule");
+    let before_response=match api_get(&state,&schedule_url).await{Ok(value) if value.status().is_success()=>value,Ok(_)=>return response_error(StatusCode::BAD_GATEWAY,"SCHEDULE_READ_FAILED"),Err(_)=>return response_error(StatusCode::BAD_GATEWAY,"SCHEDULE_READ_FAILED")};
+    let before=match before_response.json::<Value>().await{Ok(value)=>value,Err(_)=>return response_error(StatusCode::BAD_GATEWAY,"AWS_RESPONSE_INVALID")};
+    let Some(before_rows)=before.pointer("/schedule/personalTime").and_then(Value::as_array).cloned() else{return response_error(StatusCode::BAD_GATEWAY,"AWS_RESPONSE_INVALID");};
+    if input.action!="create"&&!before_rows.iter().any(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str())){
+        return if input.action=="delete"{Json(json!({"confirmed":true,"alreadyDeleted":true})).into_response()}else{response_error(StatusCode::NOT_FOUND,"PERSONAL_TIME_NOT_FOUND")};
+    }
+    let base=format!("{API_ROOT}/events/{EVENT_ID}/personal-time");
+    let (method,url,body)=match input.action.as_str(){
+        "create"=>(Method::POST,base.clone(),Some(json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}))),
+        "update"=>(Method::PUT,format!("{base}/{}",input.personal_time_id),Some(json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}))),
+        _=>(Method::DELETE,format!("{base}/{}",input.personal_time_id),None),
+    };
+    let write_result=aws_personal_time_write(&state,method,&url,body).await;
+    if let Ok(response)=&write_result {
+        if response.status().is_server_error() { /* Reconcile from GetSchedule before reporting an ambiguous write. */ }
+        else {
+        if !response.status().is_success()&&!(input.action=="delete"&&response.status()==ReqwestStatus::NOT_FOUND){
+            let status=response.status();let (http,code)=match status.as_u16(){401=>(StatusCode::UNAUTHORIZED,"SIGN_IN_REQUIRED"),403=>(StatusCode::FORBIDDEN,"EVENT_REGISTRATION_REQUIRED"),404=>(StatusCode::NOT_FOUND,"PERSONAL_TIME_NOT_FOUND"),409=>(StatusCode::CONFLICT,"AWS_OPERATION_CLOSED"),429=>(StatusCode::TOO_MANY_REQUESTS,"RATE_LIMITED"),400=>(StatusCode::BAD_REQUEST,"PERSONAL_TIME_REJECTED"),_=>(StatusCode::BAD_GATEWAY,"PERSONAL_TIME_WRITE_FAILED")};return response_error(http,code);
+        }
+        }
+    }
+    let after_response=match api_get(&state,&schedule_url).await{Ok(value) if value.status().is_success()=>value,_=>return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response()};
+    let after=match after_response.json::<Value>().await{Ok(value)=>value,Err(_)=>return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response()};
+    let Some(after_rows)=after.pointer("/schedule/personalTime").and_then(Value::as_array).cloned() else{return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response();};
+    let result=match input.action.as_str(){
+        "create"=>{let prior=before_rows.iter().filter(|row|personal_time_matches(row,&input)).count();let matches:Vec<&Value>=after_rows.iter().filter(|row|personal_time_matches(row,&input)).collect();if matches.len()>prior&&matches.len()==prior+1{json!({"confirmed":true,"action":"created","personalTime":matches.last().copied()})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
+        "update"=>{let found=after_rows.iter().find(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str()));if found.is_some_and(|row|personal_time_matches(row,&input)){json!({"confirmed":true,"action":"updated","personalTime":found})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
+        _=>{if !after_rows.iter().any(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str())){json!({"confirmed":true,"action":"deleted"})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
+    };
+    Json(result).into_response()
+}
+
 async fn aws_reserved_ids(state: &AppState) -> Result<HashSet<String>, &'static str> {
     let url = format!("{API_ROOT}/events/{EVENT_ID}/schedule");
     let response = api_get(state, &url).await.map_err(|_| "SCHEDULE_READ_FAILED")?;
@@ -1494,6 +1584,7 @@ async fn main() {
         .route("/api/live/catalog", get(live_catalog))
         .route("/api/live/catalog/refresh", post(live_catalog_refresh))
         .route("/api/live/schedule", get(live_schedule))
+        .route("/api/live/personal-time", post(live_personal_time))
         .route("/api/live/reservations", post(live_reserve_sessions))
         .route("/api/live/reservations/cancel", post(live_cancel_reservations))
         .route("/api/google/status", get(google_status))
