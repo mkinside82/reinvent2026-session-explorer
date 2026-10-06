@@ -14,6 +14,7 @@ class Element {
  showModal(){this.open=true;}
  close(){this.open=false;this.dispatch('close');}
  querySelector(){return null;}
+ querySelectorAll(){return [];}
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 for(const width of [1440,390])test(`${width}px: Level 200+ default → search → quick → advanced → compact → detail → plan → conflict → compare → remove → planner → free slot`,async()=>{
