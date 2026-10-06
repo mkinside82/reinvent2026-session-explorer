@@ -123,6 +123,7 @@ export async function fetchLiveCatalog({signal}={}){
 }
 export async function fetchLiveSchedule(){return apiRequest('/api/live/schedule');}
 export async function reserveLiveSessions(sessionIds){return apiRequest('/api/live/reservations',{method:'POST',body:{sessionIds}});}
+export async function cancelLiveReservations(sessionIds){return apiRequest('/api/live/reservations/cancel',{method:'POST',body:{sessionIds}});}
 export async function googleCalendarStatus(){return apiRequest('/api/google/status');}
 export async function configureGoogleCalendar(clientId){return apiRequest('/api/google/configure',{method:'POST',body:{clientId}});}
 export async function connectGoogleCalendar(){return apiRequest('/api/google/connect',{method:'POST',body:{}});}

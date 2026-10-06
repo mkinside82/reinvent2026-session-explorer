@@ -30,7 +30,7 @@ Live mode requires macOS, Rust, and Cargo:
 
 The first start builds the local Rust companion and prints the app URL. Choose **Builder ID sign-in** in the browser. The attendee must have a registered AWS re:Invent account. AWS OAuth uses Authorization Code with PKCE and a loopback callback; the app keeps the access token in process memory and stores the refresh token in macOS Keychain. It does not use a client secret or fall back to plaintext token storage.
 
-Live reads the attendee's AWS Events catalog. My Plan is local browser data and adding an item to it does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. Cancellation is not supported. Check AWS's current reservation status before attempting a reservation; live end-to-end reservation behavior has not been verified.
+Live reads the attendee's AWS Events catalog. My Plan is local browser data and adding an item to it does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. AWS may reject reservations and cancellations while the operation is closed. Live reservation and cancellation flows have not been verified with a real account.
 
 ## Google Calendar (optional)
 

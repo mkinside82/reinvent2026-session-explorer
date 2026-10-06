@@ -1014,6 +1014,88 @@ async fn live_reserve_sessions(State(state): State<AppState>, Json(input): Json<
     Json(json!({"successful":successful,"failed":failed,"unknown":unknown,"scheduleConfirmed":schedule_confirmed})).into_response()
 }
 
+async fn live_cancel_reservations(State(state): State<AppState>, Json(input): Json<ReserveSessionsRequest>) -> Response {
+    if input.session_ids.is_empty() || input.session_ids.len() > 10 {
+        return response_error(StatusCode::BAD_REQUEST, "RESERVATION_ITEM_COUNT_INVALID");
+    }
+    let mut seen = HashSet::new();
+    if input.session_ids.iter().any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str())) {
+        return response_error(StatusCode::BAD_REQUEST, "RESERVATION_SESSION_IDS_INVALID");
+    }
+    if state.0.auth.lock().await.account_id.is_none() {
+        return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED");
+    }
+    let before = match aws_reserved_ids(&state).await {
+        Ok(ids) => ids,
+        Err(code) => return response_error(StatusCode::BAD_GATEWAY, code),
+    };
+    let mut cancelled = Vec::new();
+    let mut failed: Vec<Value> = Vec::new();
+    let mut unknown = Vec::new();
+    let mut succeeded = HashSet::new();
+    for id in &input.session_ids {
+        if !before.contains(id) {
+            cancelled.push(id.clone());
+            succeeded.insert(id.clone());
+            continue;
+        }
+        let url = format!("{API_ROOT}/events/{EVENT_ID}/reservations/{id}");
+        let mut refreshed = false;
+        let response = loop {
+            let access = match load_access_token(&state, refreshed).await {
+                Ok(value) => value,
+                Err(_) => return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
+            };
+            match state.0.client.delete(&url).bearer_auth(access).send().await {
+                Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => { refreshed = true; continue; }
+                Ok(response) => break Some(response),
+                Err(_) => break None,
+            }
+        };
+        match response {
+            None => unknown.push(id.clone()),
+            Some(response) if response.status().is_success() || response.status().as_u16() == 404 => { succeeded.insert(id.clone()); },
+            Some(response) => {
+                let status = response.status();
+                if status.is_server_error() { unknown.push(id.clone()); }
+                else {
+                    let code = match status.as_u16() {
+                        401 => "SIGN_IN_REQUIRED",
+                        403 => "EVENT_REGISTRATION_REQUIRED",
+                        409 => "RESERVATIONS_CLOSED_OR_CONFLICT",
+                        429 => "RATE_LIMITED",
+                        _ => "CANCELLATION_FAILED",
+                    };
+                    failed.push(json!({"sessionId":id,"code":code}));
+                }
+            }
+        }
+    }
+    let mut schedule_confirmed = false;
+    let current = match aws_reserved_ids(&state).await {
+        Ok(ids) => { schedule_confirmed = true; ids },
+        Err(_) => HashSet::new(),
+    };
+    if schedule_confirmed {
+        for id in &input.session_ids {
+            if !current.contains(id) {
+                if !cancelled.contains(id) { cancelled.push(id.clone()); }
+                failed.retain(|failure| failure.get("sessionId").and_then(Value::as_str) != Some(id));
+                unknown.retain(|value| value != id);
+            } else if succeeded.contains(id) {
+                cancelled.retain(|value| value != id);
+                if !unknown.contains(id) { unknown.push(id.clone()); }
+            }
+        }
+    } else {
+        for id in succeeded {
+            if !unknown.contains(&id) && !cancelled.contains(&id) { unknown.push(id); }
+        }
+    }
+    let reserved: Vec<String> = current.into_iter().collect();
+    Json(json!({"cancelled":cancelled,"failed":failed,"unknown":unknown,"scheduleConfirmed":schedule_confirmed,"reserved":reserved})).into_response()
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GoogleConfigureRequest { client_id: String }
@@ -1413,6 +1495,7 @@ async fn main() {
         .route("/api/live/catalog/refresh", post(live_catalog_refresh))
         .route("/api/live/schedule", get(live_schedule))
         .route("/api/live/reservations", post(live_reserve_sessions))
+        .route("/api/live/reservations/cancel", post(live_cancel_reservations))
         .route("/api/google/status", get(google_status))
         .route("/api/google/configure", post(google_configure))
         .route("/api/google/connect", post(google_connect))

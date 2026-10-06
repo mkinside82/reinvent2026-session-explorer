@@ -35,7 +35,7 @@ npm run demo
 3. 気になるセッションを **My Plan** に追加し、日ごとのTimelineで重複と空き時間を見ながら予定を組みます。
 4. 必要なら候補をICSへ書き出すか、設定したGoogle Calendarへ本人確認後に同期します。
 
-**My Planへの追加はAWSの予約ではありません。** LiveモードではMy PlanからAWS予約対象を最大10件選び、対象確認後に1回の一括送信を行えます。結果はセッションごとに表示し、AWS Scheduleを再読込して照合します。取消は未対応です。受付状況は変更されるため、送信前に[AWS公式カタログ](https://catalog.awsevents.com/)で確認してください。実アカウントでの予約フローは未検証です。
+**My Planへの追加はAWSの予約ではありません。** LiveモードではMy PlanからAWS予約対象を最大10件選び、対象確認後に1回の一括送信を行えます。AWS Scheduleから既存予約を最大10件選んで解除することもできます。解除APIは1件ずつ呼び、送信後にScheduleを再読込して個別結果を表示します。受付状況は変わるため、予約前に[AWS公式カタログ](https://catalog.awsevents.com/)で確認してください。実アカウントでの予約・解除フローは未検証です。
 
 ## 主な機能
 
@@ -44,6 +44,7 @@ npm run demo
 - Sessionsと公式情報を確認したSide eventsの分離表示
 - Card / Compact表示、タイトル・時刻順、最大3件の比較
 - My PlanのTimeline / List表示、重複検出、空き時間からのセッション検索
+- AWS公式の注目テーマを根拠付きで紹介し、My Plan候補と重ならないセッションを優先表示
 - 詳細画面からAWS公式イベントカタログを開く導線
 - 日本語 / EnglishのUI切替
 - 1回限りのICS書き出し
@@ -61,6 +62,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - [セッション一覧（ListSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-listsessions.html)
 - [参加者スケジュール（GetSchedule）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-getschedule.html)
 - [セッション予約（ReserveSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-reservesessions.html)
+- [予約取消（CancelReservation）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-cancelreservation.html)
 - [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
 
 このアプリのLive接続はREST APIを直接呼び出します。ブラウザー内のWebMCPは、このタブのカタログ検索やMy Plan操作をAIツールへ公開する試作です。AWS公式Events MCPサーバーへの接続とは別の機能です。
@@ -82,7 +84,7 @@ LiveモードとGoogle Calendarの設定手順は[アプリガイド（日本語
 
 ## 現在の制約
 
-- AWS一括予約はLiveモードで明示確認後に最大10件を送信し、Schedule再読込と個別結果表示を行います。取消は未対応です。My PlanはAWS予約とは別状態です。
+- AWS一括予約はLiveモードで明示確認後に最大10件を送信し、Schedule再読込と個別結果表示を行います。既存予約の解除も可能ですが、AWS Scheduleに載っている項目だけが対象で、取消APIは1件ずつ呼び出します。My PlanはAWS予約とは別状態です。
 - Google Calendarの実アカウント接続とAPI書き込みは、この環境では未検証です。ユーザー自身のOAuth設定が必要です。
 - WebMCP試作はブラウザー内だけの機能で、ChatGPTなどから接続できる独立MCPサーバーではありません。AWSカタログやAWSスケジュールへのChatGPT連携には[AWS公式Events MCP](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)を利用できます。
 - Side eventsは出典を確認できたものだけを掲載します。時刻や申込条件が公式に確認できない場合は未確認のまま表示します。
