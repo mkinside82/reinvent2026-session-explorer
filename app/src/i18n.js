@@ -97,7 +97,7 @@ const english=Object.freeze({
 'Google Calendarから同期予定を削除しました':'Synced event removed from Google Calendar',
 'Google Calendar予定を削除できませんでした。再試行してください。':'Could not remove the Google Calendar event. Please retry.',
 'Google Calendarから削除できませんでした。認証・通信状態を確認してください。':'Could not remove the Google Calendar event. Check authorization and connection.',
-'AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。':'Could not sign out of AWS. Check Keychain and the local server.',
+'AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。':'Could not sign out of AWS. Check Keychain and the local server.','Builder IDを切り替え':'Switch Builder ID','Builder IDの切り替え':'Switch Builder ID','サインアウト方法を選んでください。':'Choose how to sign out.','アプリだけからサインアウト':'Sign out of this app only','このアプリのAWSトークンとKeychain保存を消します。Builder IDのブラウザーセッションは残るため、再サインイン時に同じIDが自動で使われる場合があります。':'Remove this app’s AWS tokens and Keychain entry. Your Builder ID browser session stays active, so signing in again may use the same ID automatically.','Builder IDもサインアウト':'Also sign out of Builder ID','アプリの認証情報を消した後、このブラウザーのBuilder IDセッションも終了します。戻った後に別のBuilder IDでサインインできます。':'After clearing this app’s credentials, end the Builder ID session in this browser too. You can sign in with a different Builder ID when you return.','アプリからサインアウト':'Sign out of this app','Builder IDを切り替える':'Switch Builder ID','このアプリからサインアウトしました。Builder IDのブラウザーセッションは維持しています。':'Signed out of this app. The Builder ID browser session remains active.',
 'AWSへサインインしてください。':'Sign in to AWS.','AWSカタログを更新できませんでした。':'Could not refresh the AWS catalog.',
 '一度に同期できる予定は50件までです':'Sync up to 50 events at a time',
 '日時が確定した候補がないため、ICSを書き出せません。':'Cannot export ICS without items that have confirmed times.',

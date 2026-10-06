@@ -131,7 +131,8 @@ export async function localSessionStatus(){
   return result;
 }
 export async function startBuilderIdSignIn(){const result=await apiRequest('/api/auth/start',{method:'POST',body:{}});if(typeof result.authorizationUrl!=='string')throw new Error('LOCAL_API_ERROR');return result.authorizationUrl;}
-export async function signOutAws(){const result=await apiRequest('/api/auth/logout',{method:'POST',body:{}});return result.logoutUrl;}
+export async function signOutAws(){return apiRequest('/api/auth/logout',{method:'POST',body:{}});}
+export async function signOutBuilderId(){const result=await apiRequest('/api/auth/logout-builder-id',{method:'POST',body:{}});return result.logoutUrl;}
 export async function requestCatalogRefresh(){return apiRequest('/api/live/catalog/refresh',{method:'POST',body:{}});}
 export async function fetchLiveCatalog({signal}={}){
   const snapshot=await apiRequest('/api/live/catalog',{signal});

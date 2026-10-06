@@ -1042,7 +1042,7 @@ fn callback_error(message: &str) -> Response {
         .into_response()
 }
 
-async fn auth_logout(State(state): State<AppState>) -> Response {
+async fn clear_aws_auth(state: &AppState) -> Result<(), &'static str> {
     let refresh_token = keychain_read().await.unwrap_or(None);
     if let Some(token) = refresh_token.as_deref() {
         // Revocation is best-effort for connectivity, but local copies are always discarded.
@@ -1061,7 +1061,18 @@ async fn auth_logout(State(state): State<AppState>) -> Response {
         auth.expires_at = None;
         auth.account_id = None;
     }
-    if keychain_status.is_err() {
+    keychain_status
+}
+
+async fn auth_logout(State(state): State<AppState>) -> Response {
+    if clear_aws_auth(&state).await.is_err() {
+        return response_error(StatusCode::INTERNAL_SERVER_ERROR, "KEYCHAIN_UNAVAILABLE");
+    }
+    (StatusCode::OK, Json(json!({ "signedOut": true }))).into_response()
+}
+
+async fn auth_logout_builder_id(State(state): State<AppState>) -> Response {
+    if clear_aws_auth(&state).await.is_err() {
         return response_error(StatusCode::INTERNAL_SERVER_ERROR, "KEYCHAIN_UNAVAILABLE");
     }
     let local_logout = format!("http://127.0.0.1:{}/logout", state.0.port);
@@ -1818,6 +1829,7 @@ async fn main() {
         .route("/api/health", get(health))
         .route("/api/auth/start", post(auth_start))
         .route("/api/auth/logout", post(auth_logout))
+        .route("/api/auth/logout-builder-id", post(auth_logout_builder_id))
         .route("/api/live/catalog", get(live_catalog))
         .route("/api/live/catalog/refresh", post(live_catalog_refresh))
         .route("/api/live/schedule", get(live_schedule))
