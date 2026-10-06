@@ -139,6 +139,7 @@ const english=Object.freeze({
 'AWS re:Invent 2026の公式キュレーションで、エージェントの安全性・信頼性と本番化が取り上げられています。設計だけでなく、評価・権限・運用まで扱うセッションを優先しました。':'Official AWS re:Invent 2026 curated agendas highlight agent safety, reliability, and production readiness. These sessions cover evaluation, permissions, and operations alongside design.',
 'エージェントの権限と安全性を設計する':'Design agent permissions and safety',
 'AWS公式の今年のSecurity Focusはagentic securityを含み、ガバナンス・ID・認可・安全策を扱うと案内しています。AIを作るだけでなく、制御方法を学べる候補です。':'This year’s official AWS Security Focus includes agentic security, governance, identity, authorization, and safeguards. These sessions explore how to control AI systems.',
+'AWS公式ブログ · 最終更新':'AWS official blogs · Updated','AWS公式ブログを確認中':'Checking AWS official blogs','AWS公式記事を取得できていません':'AWS official articles are unavailable',' · 更新中':' · Refreshing',' · 更新失敗。前回の取得内容を表示中':' · Refresh failed; showing the previous snapshot','AWS公式記事 · 公開日':'AWS article · Published','根拠 · 確認日':'Evidence · Checked',
 });
 const japaneseLabels=Object.freeze({
 'Explore':'探す','Day Planner':'一日の予定','Sessions':'セッション','Side events':'サイドイベント','sessions':'件のセッション','side events':'件のサイドイベント',

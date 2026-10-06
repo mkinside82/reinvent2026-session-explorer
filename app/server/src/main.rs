@@ -60,6 +60,7 @@ struct Inner {
     auth: Mutex<AuthState>,
     google_auth: Mutex<AuthState>,
     catalogs: Mutex<HashMap<String, Arc<Mutex<Catalog>>>>,
+    recommendation_news: Mutex<RecommendationNews>,
 }
 
 #[derive(Clone)]
@@ -111,6 +112,48 @@ struct Catalog {
     next_token: Option<String>,
     seen_tokens: HashSet<String>,
     retry_after: Option<Instant>,
+    error: Option<String>,
+}
+
+const NEWS_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const AWS_NEWS_FEEDS: [(&str, &str); 3] = [
+    ("AWS News Blog", "https://aws.amazon.com/blogs/aws/feed/"),
+    (
+        "AWS Machine Learning Blog",
+        "https://aws.amazon.com/blogs/machine-learning/feed/",
+    ),
+    (
+        "AWS Security Blog",
+        "https://aws.amazon.com/blogs/security/feed/",
+    ),
+];
+
+#[derive(Default)]
+struct RecommendationNews {
+    items: Vec<NewsItem>,
+    fetched_at: Option<u64>,
+    refreshing: bool,
+    retry_after: Option<Instant>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewsItem {
+    title: String,
+    url: String,
+    source_name: String,
+    published_at: String,
+    summary: String,
+    categories: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecommendationNewsResponse {
+    items: Vec<NewsItem>,
+    fetched_at: Option<u64>,
+    refreshing: bool,
     error: Option<String>,
 }
 
@@ -479,6 +522,199 @@ fn catalog_response(catalog: &Catalog) -> CatalogResponse {
         refreshing: catalog.fetching,
         error: catalog.error.clone(),
     }
+}
+
+fn xml_unescape(value: &str) -> String {
+    value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
+fn xml_text(block: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}");
+    let start = block.find(&open)?;
+    let content_start = block[start..].find('>')? + start + 1;
+    let close = format!("</{tag}>");
+    let end = block[content_start..].find(&close)? + content_start;
+    let mut value = block[content_start..end].trim().to_owned();
+    if value.starts_with("<![CDATA[") && value.ends_with("]]>") {
+        value = value[9..value.len() - 3].to_owned();
+    }
+    let value = xml_unescape(&value);
+    let value = value
+        .replace("<br>", " ")
+        .replace("<br />", " ")
+        .replace("</p>", " ")
+        .replace("</div>", " ");
+    let mut plain = String::with_capacity(value.len());
+    let mut in_tag = false;
+    for character in value.chars() {
+        match character {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => plain.push(character),
+            _ => {}
+        }
+    }
+    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!plain.is_empty()).then_some(plain)
+}
+
+fn parse_news_feed(xml: &str, source_name: &str) -> Vec<NewsItem> {
+    let mut output = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find("<item>").or_else(|| rest.find("<item ")) {
+        rest = &rest[start..];
+        let Some(open_end) = rest.find('>') else {
+            break;
+        };
+        let Some(end) = rest[open_end + 1..].find("</item>") else {
+            break;
+        };
+        let item = &rest[open_end + 1..open_end + 1 + end];
+        rest = &rest[open_end + 1 + end + 7..];
+        let (Some(title), Some(url)) = (xml_text(item, "title"), xml_text(item, "link")) else {
+            continue;
+        };
+        let Ok(parsed_url) = url::Url::parse(&url) else {
+            continue;
+        };
+        if parsed_url.scheme() != "https" || parsed_url.host_str() != Some("aws.amazon.com") {
+            continue;
+        }
+        let published_at = xml_text(item, "pubDate").unwrap_or_default();
+        let summary = xml_text(item, "description").unwrap_or_default();
+        let mut categories = Vec::new();
+        let mut category_rest = item;
+        while let Some(index) = category_rest.find("<category") {
+            category_rest = &category_rest[index..];
+            let Some(category_open) = category_rest.find('>') else {
+                break;
+            };
+            let Some(category_end) = category_rest[category_open + 1..].find("</category>") else {
+                break;
+            };
+            let category = xml_unescape(
+                category_rest[category_open + 1..category_open + 1 + category_end].trim(),
+            );
+            if !category.is_empty() && !categories.contains(&category) {
+                categories.push(category);
+            }
+            category_rest = &category_rest[category_open + 1 + category_end + 11..];
+        }
+        output.push(NewsItem {
+            title,
+            url: parsed_url.to_string(),
+            source_name: source_name.to_owned(),
+            published_at,
+            summary,
+            categories,
+        });
+        if output.len() >= 30 {
+            break;
+        }
+    }
+    output
+}
+
+async fn fetch_news_feed(
+    state: &AppState,
+    source_name: &'static str,
+    feed_url: &'static str,
+) -> Result<Vec<NewsItem>, &'static str> {
+    let response = state
+        .0
+        .client
+        .get(feed_url)
+        .header(
+            header::ACCEPT,
+            "application/rss+xml, application/xml, text/xml",
+        )
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .map_err(|_| "NETWORK_ERROR")?;
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|size| size > 1_000_000)
+    {
+        return Err("NEWS_SOURCE_UNAVAILABLE");
+    }
+    let bytes = response.bytes().await.map_err(|_| "NETWORK_ERROR")?;
+    if bytes.len() > 1_000_000 {
+        return Err("NEWS_SOURCE_TOO_LARGE");
+    }
+    let xml = String::from_utf8_lossy(&bytes);
+    Ok(parse_news_feed(&xml, source_name))
+}
+
+async fn start_news_refresh(state: AppState) {
+    {
+        let mut cache = state.0.recommendation_news.lock().await;
+        if cache.refreshing
+            || cache
+                .retry_after
+                .is_some_and(|until| until > Instant::now())
+            || cache
+                .fetched_at
+                .is_some_and(|fetched| now_epoch().saturating_sub(fetched) < NEWS_TTL.as_secs())
+        {
+            return;
+        }
+        cache.refreshing = true;
+    }
+    tokio::spawn(async move {
+        let (aws, ml, security) = tokio::join!(
+            fetch_news_feed(&state, AWS_NEWS_FEEDS[0].0, AWS_NEWS_FEEDS[0].1),
+            fetch_news_feed(&state, AWS_NEWS_FEEDS[1].0, AWS_NEWS_FEEDS[1].1),
+            fetch_news_feed(&state, AWS_NEWS_FEEDS[2].0, AWS_NEWS_FEEDS[2].1),
+        );
+        let mut items = Vec::new();
+        let mut feeds = [aws, ml, security].map(|result| result.ok());
+        // RSS feeds are newest-first. Interleave them without parsing feed-specific
+        // date formats, so one busy blog cannot crowd out every other AWS topic.
+        for index in 0..30 {
+            for feed in &mut feeds {
+                if let Some(items_for_feed) = feed.as_mut() {
+                    if index < items_for_feed.len() {
+                        items.push(items_for_feed[index].clone());
+                    }
+                }
+            }
+        }
+        let mut seen = HashSet::new();
+        items.retain(|item| seen.insert(item.url.clone()));
+        let mut cache = state.0.recommendation_news.lock().await;
+        cache.refreshing = false;
+        if items.is_empty() {
+            cache.error = Some("NEWS_SOURCES_UNAVAILABLE".to_owned());
+            cache.retry_after = Some(Instant::now() + Duration::from_secs(30 * 60));
+        } else {
+            cache.items = items.into_iter().take(60).collect();
+            cache.fetched_at = Some(now_epoch());
+            cache.error = None;
+            cache.retry_after = None;
+        }
+    });
+}
+
+async fn recommendation_news(State(state): State<AppState>) -> Response {
+    start_news_refresh(state.clone()).await;
+    let response = {
+        let cache = state.0.recommendation_news.lock().await;
+        RecommendationNewsResponse {
+            items: cache.items.clone(),
+            fetched_at: cache.fetched_at,
+            refreshing: cache.refreshing,
+            error: cache.error.clone(),
+        }
+    };
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 async fn catalog_for(state: &AppState, account_id: &str) -> Arc<Mutex<Catalog>> {
@@ -1565,6 +1801,7 @@ async fn main() {
         auth: Mutex::new(AuthState::default()),
         google_auth: Mutex::new(AuthState::default()),
         catalogs: Mutex::new(HashMap::new()),
+        recommendation_news: Mutex::new(RecommendationNews::default()),
     }));
     let app_dir = env::var_os("REINVENT_APP_DIR")
         .map(PathBuf::from)
@@ -1584,6 +1821,7 @@ async fn main() {
         .route("/api/live/catalog", get(live_catalog))
         .route("/api/live/catalog/refresh", post(live_catalog_refresh))
         .route("/api/live/schedule", get(live_schedule))
+        .route("/api/live/recommendation-news", get(recommendation_news))
         .route("/api/live/personal-time", post(live_personal_time))
         .route("/api/live/reservations", post(live_reserve_sessions))
         .route("/api/live/reservations/cancel", post(live_cancel_reservations))

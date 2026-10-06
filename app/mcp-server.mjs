@@ -31,14 +31,14 @@ async function api(server,path,{method='GET',body}={}){
   if(!response.ok)throw new Error(typeof value.error==='string'?value.error:`LOCAL_API_${response.status}`);
   return value;
 }
-async function signedContext({catalog=true,schedule=true}={}){
+async function signedContext({catalog=true,schedule=true,news=false}={}){
   const server=await localServer();
   if(!server)throw new Error('SESSION_EXPLORER_NOT_RUNNING');
   if(!server.status.authenticated)throw new Error('SIGN_IN_REQUIRED');
-  const [catalogResponse,scheduleResponse]=await Promise.all([catalog?api(server,'/api/live/catalog'):null,schedule?api(server,'/api/live/schedule'):null]);
+  const [catalogResponse,scheduleResponse,newsResponse]=await Promise.all([catalog?api(server,'/api/live/catalog'):null,schedule?api(server,'/api/live/schedule'):null,news?api(server,'/api/live/recommendation-news'):null]);
   if(catalog&&!Array.isArray(catalogResponse.items))throw new Error('AWS_RESPONSE_INVALID');
   if(schedule&&!scheduleResponse.schedule)throw new Error('AWS_RESPONSE_INVALID');
-  return {server,catalog:catalog?adaptAwsSessions(catalogResponse.items):[],catalogMeta:catalog?{complete:catalogResponse.complete,refreshing:catalogResponse.refreshing,pages:catalogResponse.pages,totalCount:catalogResponse.totalCount,error:catalogResponse.error||null}:null,schedule:schedule?scheduleResponse.schedule:null};
+  return {server,catalog:catalog?adaptAwsSessions(catalogResponse.items):[],catalogMeta:catalog?{complete:catalogResponse.complete,refreshing:catalogResponse.refreshing,pages:catalogResponse.pages,totalCount:catalogResponse.totalCount,error:catalogResponse.error||null}:null,schedule:schedule?scheduleResponse.schedule:null,recommendationNews:news?newsResponse:null};
 }
 function summary(item){return {id:item.id,code:item.code,title:item.title,abstract:item.abstract,date:item.date,startTime:item.startTime,endTime:item.endTime,venue:item.venue,sessionType:item.sessionType,track:item.track,topics:item.topics};}
 function searchSessions(context,{query='',date='',limit=20}={}){
@@ -68,6 +68,7 @@ function checkConflicts(context,{sessionIds}={}){
   return {checkedSessionIds:sessionIds,alreadyReservedSessionIds:sessionIds.filter(id=>reserved.has(id)),missingSessionIds:sessionIds.filter(id=>!catalogById.has(id)),conflicts:pairs};
 }
 const recommendationCorpus=item=>[item.title,item.abstract,item.code,item.track,item.sessionType,...(item.tracks||[]),...(item.topics||[]),...(item.services||[]),...(item.speakers||[]),...(item.industries||[]),...(item.roles||[]),...(item.keywords||[])].join(' ').normalize('NFKC').toLocaleLowerCase();
+const newsTerms=article=>[article.title,...(article.categories||[])].filter(value=>typeof value==='string').join(' ').normalize('NFKC').toLocaleLowerCase().match(/[\p{L}\p{N}+#.-]{3,}/gu)?.filter(term=>term.length>2&&!['about','after','amazon','aws','from','into','with','this','that','your','their','using','when','what','will','have','more','how','the','and','for','new','now','service','services'].includes(term))||[];
 function recommendSessionsForGaps(context,{date,interests=[],dayStart='08:00',dayEnd='20:00',perSlotLimit=3}={}){
   if(!validDate(date))throw new Error('date must be a valid YYYY-MM-DD date');
   if(!Array.isArray(interests)||interests.length>RECOMMENDATION_INTERESTS.length||interests.some(id=>typeof id!=='string'||!RECOMMENDATION_INTERESTS.some(option=>option.id===id)))throw new Error(`interests must use up to ${RECOMMENDATION_INTERESTS.length} known interest IDs`);
@@ -88,26 +89,29 @@ function recommendSessionsForGaps(context,{date,interests=[],dayStart='08:00',da
   const selected=RECOMMENDATION_INTERESTS.filter(option=>interests.includes(option.id));
   const today=new Date().toISOString().slice(0,10);
   const liveThemes=TREND_SIGNALS.filter(signal=>signal.expiresAt>=today);
+  const recentNews=(context.recommendationNews?.items||[]).slice(0,60);
   const candidates=context.catalog.filter(item=>item.date===date&&validInterval(item)&&!reservedIds.has(item.id)&&item.itemType!=='personalTime');
   const slots=gaps.map(gap=>{
     const recommendations=candidates.filter(item=>minutes(item.startTime)>=gap.start&&minutes(item.endTime)<=gap.end).map(item=>{
       const text=recommendationCorpus(item);
       const matchedInterests=selected.filter(option=>option.terms.some(term=>text.includes(term))).map(option=>({id:option.id,label:option.label}));
       const matchedThemes=liveThemes.filter(signal=>signal.terms.some(term=>text.includes(term.toLocaleLowerCase()))).map(signal=>signal.title);
+      const matchedNews=recentNews.filter(article=>newsTerms(article).some(term=>text.includes(term))).slice(0,3);
       const availability=item.uiState?.availability||'unknown';
       const reasons=[];
       if(matchedInterests.length)reasons.push(`関心分野: ${matchedInterests.map(match=>match.label).join('、')}`);
       if(matchedThemes.length)reasons.push(`注目テーマ: ${matchedThemes.join('、')}`);
+      if(matchedNews.length)reasons.push(`AWS公式の最新記事: ${matchedNews.map(article=>article.title).join('、')}`);
       if(!reasons.length)reasons.push('空き時間に収まり、既存予定と重複しません');
-      return {item,matchedInterests:matchedInterests.map(match=>match.id),matchedInterestLabels:matchedInterests.map(match=>match.label),matchedThemes,recommendationReasons:reasons,availability};
-    }).sort((a,b)=>b.matchedInterests.length-a.matchedInterests.length||b.matchedThemes.length-a.matchedThemes.length||({available:0,limited:1,veryLimited:2,walkUp:3,unknown:4,unavailable:5,full:6}[a.availability]??4)-({available:0,limited:1,veryLimited:2,walkUp:3,unknown:4,unavailable:5,full:6}[b.availability]??4)||minutes(a.item.startTime)-minutes(b.item.startTime)||a.item.title.localeCompare(b.item.title)).slice(0,perSlotLimit).map(match=>({...summary(match.item),reservable:match.item.reservable,availability:match.availability,matchedInterests:match.matchedInterests,matchedInterestLabels:match.matchedInterestLabels,matchedThemes:match.matchedThemes,recommendationReasons:match.recommendationReasons,officialCatalogUrl:AWS_EVENT_CATALOG_URL}));
+      return {item,matchedInterests:matchedInterests.map(match=>match.id),matchedInterestLabels:matchedInterests.map(match=>match.label),matchedThemes,matchedNews,recommendationReasons:reasons,availability};
+    }).sort((a,b)=>b.matchedInterests.length-a.matchedInterests.length||b.matchedNews.length-a.matchedNews.length||b.matchedThemes.length-a.matchedThemes.length||({available:0,limited:1,veryLimited:2,walkUp:3,unknown:4,unavailable:5,full:6}[a.availability]??4)-({available:0,limited:1,veryLimited:2,walkUp:3,unknown:4,unavailable:5,full:6}[b.availability]??4)||minutes(a.item.startTime)-minutes(b.item.startTime)||a.item.title.localeCompare(b.item.title)).slice(0,perSlotLimit).map(match=>({...summary(match.item),reservable:match.item.reservable,availability:match.availability,matchedInterests:match.matchedInterests,matchedInterestLabels:match.matchedInterestLabels,matchedThemes:match.matchedThemes,matchedNews:match.matchedNews.map(article=>({title:article.title,url:article.url,sourceName:article.sourceName,publishedAt:article.publishedAt})),recommendationReasons:match.recommendationReasons,officialCatalogUrl:AWS_EVENT_CATALOG_URL}));
     return {start:`${String(Math.floor(gap.start/60)).padStart(2,'0')}:${String(gap.start%60).padStart(2,'0')}`,end:`${String(Math.floor(gap.end/60)).padStart(2,'0')}:${String(gap.end%60).padStart(2,'0')}`,durationMinutes:gap.duration,recommendations};
   });
   const warnings=[];
   if(!context.catalogMeta?.complete)warnings.push('AWS session catalog is incomplete; additional sessions may be missing from these recommendations.');
   if(unresolvedReservationIds.length)warnings.push('Some AWS reservations are missing from the current catalog, so their times could not be used when calculating free slots.');
   if(context.catalogMeta?.refreshing)warnings.push('AWS session catalog is still refreshing.');
-  return {date,timeZone:'America/Los_Angeles',scheduleSource:'AWS Schedule reservations and personal time',catalog:{complete:context.catalogMeta?.complete===true,totalCount:context.catalogMeta?.totalCount??null,pages:context.catalogMeta?.pages??0},coverage:{scheduleComplete:unresolvedReservationIds.length===0,knownReservations:reserved.length,unresolvedReservationIds,personalTimeBlocks:personal.length},interests:interests.map(id=>RECOMMENDATION_INTERESTS.find(option=>option.id===id)?.label),window:{start:dayStart,end:dayEnd},freeSlots:slots,warnings};
+  return {date,timeZone:'America/Los_Angeles',scheduleSource:'AWS Schedule reservations and personal time',catalog:{complete:context.catalogMeta?.complete===true,totalCount:context.catalogMeta?.totalCount??null,pages:context.catalogMeta?.pages??0},recommendationNews:{fetchedAt:context.recommendationNews?.fetchedAt??null,refreshing:context.recommendationNews?.refreshing??false,error:context.recommendationNews?.error??null,articleCount:recentNews.length},coverage:{scheduleComplete:unresolvedReservationIds.length===0,knownReservations:reserved.length,unresolvedReservationIds,personalTimeBlocks:personal.length},interests:interests.map(id=>RECOMMENDATION_INTERESTS.find(option=>option.id===id)?.label),window:{start:dayStart,end:dayEnd},freeSlots:slots,warnings};
 }
 const tools=[
   {name:'begin_aws_sign_in',description:'Start AWS Builder ID sign-in for the local Session Explorer. Returns a URL for the user to open; it does not sign in automatically.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
@@ -126,7 +130,7 @@ async function callTool(name,args={}){
   if(name==='search_sessions')return searchSessions(await signedContext({schedule:false}),args);
   if(name==='get_aws_schedule')return scheduleSummary(await signedContext({catalog:false}));
   if(name==='check_schedule_conflicts')return checkConflicts(await signedContext(),args);
-  if(name==='recommend_sessions_for_gaps')return recommendSessionsForGaps(await signedContext(),args);
+  if(name==='recommend_sessions_for_gaps')return recommendSessionsForGaps(await signedContext({news:true}),args);
   throw new Error(`Unknown tool: ${name}`);
 }
 

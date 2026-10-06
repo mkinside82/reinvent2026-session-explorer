@@ -45,7 +45,7 @@ npm run demo
 - Card / Compact表示、タイトル・時刻順、最大3件の比較
 - My PlanのTimeline / List表示、重複検出、空き時間からのセッション検索
 - LiveではAWS Scheduleの予約済みセッションを起動時に非同期で読み込み、Timeline、ICS、任意のGoogle Calendar同期に反映
-- AWS公式の注目テーマを根拠付きで紹介し、My Plan候補と重ならないセッションを優先表示
+- AWS公式の注目テーマとAWS公式ブログの最新記事を根拠リンク付きで使い、My Plan候補と重ならないセッションを優先表示
 - Liveでは興味分野を選んでおすすめを調整。関心設定はブラウザー内に保存
 - 対応するデスクトップChromeでは詳細画面から端末内モデルでセッション概要を日本語翻訳
 - 詳細画面からAWS公式イベントカタログを開く導線
@@ -70,7 +70,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - [予約取消（CancelReservation）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-cancelreservation.html)
 - [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
 
-このアプリのLive接続はREST APIを直接呼び出します。`./app/reinvent-explorer mcp`で起動するローカルstdio MCPサーバーは、セッション検索・AWS Schedule読取・時間重複確認に加え、指定日の空き時間に収まる候補を関心分野・注目テーマ・空席情報で並べます。提案はAWS Scheduleの予約と個人予定を使い、Google Calendarやブラウザー内ローカル候補は読みません。ChatGPT WebからはOpenAI Secure MCP Tunnel経由で接続できます。セットアップは[アプリガイド](app/README.ja.md)を参照してください。ブラウザー内WebMCPは別機能で、このタブを開いている間だけMy Plan操作を公開します。AWS公式Events MCPサーバーともそれぞれ別の機能です。
+このアプリのLive接続はREST APIを直接呼び出します。`./app/reinvent-explorer mcp`で起動するローカルstdio MCPサーバーは、セッション検索・AWS Schedule読取・時間重複確認に加え、指定日の空き時間に収まる候補を関心分野・注目テーマ・AWS公式ブログ記事・空席情報で並べます。提案はAWS Scheduleの予約と個人予定を使い、Google Calendarやブラウザー内ローカル候補は読みません。ChatGPT WebからはOpenAI Secure MCP Tunnel経由で接続できます。セットアップは[アプリガイド](app/README.ja.md)を参照してください。ブラウザー内WebMCPは別機能で、このタブを開いている間だけMy Plan操作を公開します。AWS公式Events MCPサーバーともそれぞれ別の機能です。
 
 ## DemoとLive
 

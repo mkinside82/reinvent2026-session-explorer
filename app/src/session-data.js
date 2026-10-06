@@ -138,6 +138,7 @@ export async function fetchLiveCatalog({signal}={}){
   return {...snapshot,sessions:adaptAwsSessions(snapshot.items)};
 }
 export async function fetchLiveSchedule(){return apiRequest('/api/live/schedule');}
+export async function fetchRecommendationNews(){return apiRequest('/api/live/recommendation-news');}
 export async function reserveLiveSessions(sessionIds){return apiRequest('/api/live/reservations',{method:'POST',body:{sessionIds}});}
 export async function cancelLiveReservations(sessionIds){return apiRequest('/api/live/reservations/cancel',{method:'POST',body:{sessionIds}});}
 export async function saveLivePersonalTime(input){return apiRequest('/api/live/personal-time',{method:'POST',body:input});}
