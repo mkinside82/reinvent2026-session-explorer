@@ -132,10 +132,13 @@ function matches(s, filters) {
       ),
     );
   if (query && !searchText.get(s).includes(query)) return false;
-  for (const key of ['date', 'track', 'level', 'sessionType', 'venue']) {
+  for (const key of ['date', 'track', 'level', 'sessionType']) {
     const values = selections(filters[key]);
     if (values.length && !values.includes(s[key])) return false;
   }
+  const locations = selections(filters.venue);
+  if (locations.length && !locations.some((value) => [s.venue, s.room].includes(value)))
+    return false;
   const floor = Number(filters.minLevel);
   if (
     Number.isFinite(floor) &&

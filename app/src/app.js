@@ -128,7 +128,7 @@ const FACET_LABELS = {
   topic: 'Topic',
   level: 'Level',
   sessionType: 'Session Type',
-  venue: 'Venue',
+  venue: '場所',
   service: 'Service',
   speaker: 'Speaker',
 };
@@ -1225,7 +1225,11 @@ function buildFacets() {
     const field = { topic: 'topics', service: 'services', speaker: 'speakers' }[key] || key;
     facets[key] = [
       ...new Set(
-        source.flatMap((s) => (Array.isArray(s[field]) ? s[field] : [s[field]])).filter(Boolean),
+        source
+          .flatMap((s) =>
+            key === 'venue' ? [s.venue, s.room] : Array.isArray(s[field]) ? s[field] : [s[field]],
+          )
+          .filter(Boolean),
       ),
     ].sort();
   }
