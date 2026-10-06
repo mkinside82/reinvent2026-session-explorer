@@ -1,5 +1,5 @@
 import { t, ui } from './i18n.js';
-import { esc } from './ui-utils.js?v=20261006';
+import { esc } from './ui-utils.js?v=20261007';
 import { TREND_SIGNALS, RECOMMENDATION_INTERESTS } from './recommendation-data.js';
 
 // Evidence is intentionally explicit and expires quickly so dated trend claims

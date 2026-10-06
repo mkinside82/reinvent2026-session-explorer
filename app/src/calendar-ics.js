@@ -93,7 +93,7 @@ function utcStampNow(now) {
 }
 function eventFor(item, stamp) {
   const start = utcStamp(item.date, item.startTime),
-    end = utcStamp(item.date, item.endTime);
+    end = utcStamp(item.endDate || item.date, item.endTime);
   if (!start || !end || end <= start) return null;
   const uid = `${encodeURIComponent(item.id).replace(/%/g, '_')}@reinvent-session-explorer`;
   const description = [

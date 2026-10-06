@@ -66,6 +66,10 @@ AWS接続時は参加者本人のAWS Eventsカタログを読み込みます。�
 
 トンネルを使う間は`mcp-tunnel`を起動したままにします。ChatGPT WebのPlugins / AppsからカスタムMCPサーバーを追加し、ConnectionでTunnelを選んで同じTunnelを指定してください。ChatGPT側でカスタムMCPサーバーを追加できる権限も必要です。詳細は[OpenAI Secure MCP Tunnel公式手順](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)を参照してください。Tunnel IDやAPI keyはリポジトリに保存しません。OpenAIトンネルはChatGPTへの中継であり、ローカルAWSサインインのコールバックを転送しません。未サインインなら`begin_aws_sign_in`が認証URLを返すため、AWS接続サーバーを動かしているMac上でURLを開いてください。ブラウザー内WebMCPは別機能です。
 
+## サイドイベントの出典
+
+サイドイベント一覧にはAWS公式体験のほか、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に載っているコミュニティイベントを掲載します。同サイトはAWS非公式で、AWSとの提携・承認関係はありません。掲載ページに記載された時刻や満席表示は主催者確認済みを意味しません。参加条件・会場・空き状況は変わる可能性があるため、申込前にカードの出典リンクと主催者の申込ページを確認してください。
+
 ## Google Calendar（任意）
 
 Google Calendar同期はAWS予約とは別機能です。利用者が設定するまで無効です。

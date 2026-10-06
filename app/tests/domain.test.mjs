@@ -217,30 +217,23 @@ test('AWS seat availability bands stay distinct in the application model', () =>
     values,
   );
 });
-test('official side event data maps to source-linked planner items without AWS reservation state', async () => {
+test('curated side event data maps to source-linked planner items without AWS reservation state', async () => {
   const raw = JSON.parse(
     await readFile(new URL('../side-events.verified.json', import.meta.url), 'utf8'),
   );
   const events = adaptSideEvents(raw);
-  assert.equal(events.length, 7);
+  assert.equal(events.length, 28);
   assert(
     events.every(
       (s) =>
         s.itemType === 'sideEvent' &&
-        s.dataSource === 'official-side-event' &&
+        s.dataSource === 'curated-side-event' &&
         s.sourceUrl.startsWith('https://') &&
-        s.verifiedAt === '2026-10-05',
+        ['2026-10-05', '2026-10-07'].includes(s.verifiedAt),
     ),
   );
-  assert(
-    events.every(
-      (s) =>
-        s.reservable === null &&
-        s.sessionType === 'Side event' &&
-        s.startTime === '' &&
-        s.endTime === '' &&
-        s.timingStatus === 'unknown',
-    ),
-  );
+  assert(events.every((s) => s.reservable === null && s.sessionType === 'Side event'));
+  assert.equal(events.filter((s) => s.timingStatus === 'listed').length, 23);
+  assert.equal(events.filter((s) => s.startTime && s.endTime).length, 23);
   assert.equal(new Set(events.map((s) => s.id)).size, events.length);
 });

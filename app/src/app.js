@@ -48,7 +48,7 @@ import {
 } from './recommendations.js';
 import { PLAN_KEY, readPlan, writePlan } from './plan-store.js';
 import { MULTI_KEYS, defaultFilters, readSearchState, searchURL } from './search-state.js';
-import { esc, dateLabel, timeLabel, venueToday, blank } from './ui-utils.js?v=20261006';
+import { esc, dateLabel, timeLabel, venueToday, blank } from './ui-utils.js?v=20261007';
 import {
   renderCard,
   renderCompact,
@@ -367,7 +367,7 @@ function renderExplore(map) {
   if (sideMode && !state.sideEvents.length)
     $('#cards').innerHTML = blank(
       t('掲載中のサイドイベントはありません'),
-      t('公式情報が確認できたイベントを追加します。'),
+      t('出典を確認できたイベントを追加します。'),
     );
   else if (sideMode && !found.length)
     $('#cards').innerHTML = blank(
@@ -482,7 +482,11 @@ function renderExplore(map) {
 function renderPlan(items, map) {
   const conflicted = items.filter((s) => map.get(s.id)?.length),
     dates = [
-      ...new Set([...state.sessions, ...state.sideEvents].map((s) => s.date).filter(Boolean)),
+      ...new Set(
+        [...state.sessions, ...state.sideEvents]
+          .flatMap((s) => [s.date, s.endTime === '00:00' ? '' : s.endDate])
+          .filter(Boolean),
+      ),
     ].sort();
   if (!state.planDate && state.status === 'ready') {
     const plannedDates = [...new Set(items.map((s) => s.date).filter(Boolean))].sort();
@@ -554,7 +558,12 @@ function renderPlan(items, map) {
   const rows = items.filter(
     (s) =>
       state.planDate === 'all' ||
-      (state.planDate === 'unknown' ? !s.date : s.date === state.planDate),
+      (state.planDate === 'unknown'
+        ? !s.date
+        : s.date &&
+          s.date <= state.planDate &&
+          ((s.endDate || s.date) > state.planDate ||
+            ((s.endDate || s.date) === state.planDate && s.endTime !== '00:00'))),
   );
   let content;
   if (!items.length && state.awsScheduleStatus === 'loading' && reservationAvailable)
@@ -590,6 +599,7 @@ function renderPlan(items, map) {
       reservationAvailable,
       state.favoritePending,
       state.favoriteUnknown,
+      state.planDate === 'all' || state.planDate === 'unknown' ? '' : state.planDate,
     );
   else if (state.planDate === 'all')
     content = blank(
@@ -768,7 +778,7 @@ function renderGooglePanel(items) {
     ? [...candidates.values()]
         .map(
           (item) =>
-            ui`<div class="google-choice"><label><input type="checkbox" data-google-select="${esc(item.id)}" ${state.googleSelected.includes(item.id) ? 'checked' : ''} ${plannedIds.has(item.id) ? '' : 'disabled'}><span class="google-choice-title">${esc(item.title)}<small>${esc(dateLabel(item.date))} · ${esc(item.startTime)}–${esc(item.endTime)}${plannedIds.has(item.id) ? '' : t(' · Planから削除済み')}</small></span></label>${status.syncedItemIds?.includes(item.id) ? '<button class="quiet small" data-google-remove="' + esc(item.id) + t('">Googleから削除</button>') : ''}</div>`,
+            ui`<div class="google-choice"><label><input type="checkbox" data-google-select="${esc(item.id)}" ${state.googleSelected.includes(item.id) ? 'checked' : ''} ${plannedIds.has(item.id) ? '' : 'disabled'}><span class="google-choice-title">${esc(item.title)}<small>${esc(dateLabel(item.date))} · ${esc(timeLabel(item))}${plannedIds.has(item.id) ? '' : t(' · Planから削除済み')}</small></span></label>${status.syncedItemIds?.includes(item.id) ? '<button class="quiet small" data-google-remove="' + esc(item.id) + t('">Googleから削除</button>') : ''}</div>`,
         )
         .join('')
     : t('<p class="hint">日時の確定したPlan項目がありません。</p>');
@@ -1973,7 +1983,7 @@ function openGoogleSyncConfirmation() {
   $('#googleSyncPreview').innerHTML = selected
     .map(
       (item) =>
-        ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`,
+        ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(timeLabel(item))}</li>`,
     )
     .join('');
   openDialog('googleSyncDialog');
@@ -1994,7 +2004,7 @@ async function confirmGoogleSync() {
         .join('\n'),
       location: [item.venue, item.room].filter(Boolean).join(' · '),
       start: calendarInstant(item.date, item.startTime),
-      end: calendarInstant(item.date, item.endTime),
+      end: calendarInstant(item.endDate || item.date, item.endTime),
     }));
     if (payload.some((item) => !item.start || !item.end)) throw new Error('TIME_UNAVAILABLE');
     const result = await syncGoogleCalendar(payload);

@@ -13,10 +13,18 @@ export const dateLabel = (date) =>
         timeZone: 'UTC',
       }).format(new Date(`${date}T12:00:00Z`))
     : t('日付未定');
-export const timeLabel = (s) =>
-  s.startTime || s.endTime
-    ? `${s.startTime || t('未定')}–${s.endTime || t('未定')}`
-    : t('時間未定');
+export const timeLabel = (s, referenceDate = s.date) => {
+  if (!s.startTime && !s.endTime) return t('時間未定');
+  const start =
+    s.date && referenceDate > s.date
+      ? `${t('前日')}${s.startTime || t('未定')}`
+      : s.startTime || t('未定');
+  const end =
+    s.endDate && referenceDate < s.endDate
+      ? `${t('翌')}${s.endTime || t('未定')}`
+      : s.endTime || t('未定');
+  return `${start}–${end}`;
+};
 export const place = (s) => [s.venue, s.room].filter(Boolean).join(' / ') || t('会場未定');
 export const venueToday = () =>
   new Intl.DateTimeFormat('en-CA', {

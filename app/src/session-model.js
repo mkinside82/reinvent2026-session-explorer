@@ -1,5 +1,5 @@
 /** Application Session Model. UI never consumes a provider response directly.
- * @typedef {{id:string,code:string,title:string,abstract:string,date:string,startTime:string,endTime:string,sessionType:string,track:string,tracks:string[],topics:string[],level:string,levelLabel:string,venue:string,room:string,speakers:string[],services:string[],industries:string[],roles:string[],keywords:string[],reservable:boolean|null,sourceTime:object|null,uiState:{availability:string,attendance:string}}} Session
+ * @typedef {{id:string,code:string,title:string,abstract:string,date:string,endDate:string,startTime:string,endTime:string,sessionType:string,track:string,tracks:string[],topics:string[],level:string,levelLabel:string,venue:string,room:string,speakers:string[],services:string[],industries:string[],roles:string[],keywords:string[],reservable:boolean|null,sourceTime:object|null,uiState:{availability:string,attendance:string}}} Session
  */
 const text = (value) => (typeof value === 'string' ? value.trim() : '');
 const list = (value) =>
@@ -16,6 +16,16 @@ export function minutes(value) {
   const [h, m] = value.split(':').map(Number);
   return h * 60 + m;
 }
+const dayMinutes = (value) => {
+  if (!validDate(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return Date.UTC(year, month - 1, day) / 60_000;
+};
+const absoluteMinutes = (date, time) => {
+  const day = dayMinutes(date),
+    clock = minutes(time);
+  return day === null || clock === null ? null : day + clock;
+};
 /** Only called by adapters. Missing optional values stay empty, not fabricated. */
 export function normalizeSession(record) {
   if (!record || typeof record !== 'object' || !text(record.id)) return null;
@@ -41,6 +51,11 @@ export function normalizeSession(record) {
     title: text(record.title) || 'タイトル未定',
     abstract: text(record.abstract),
     date: validDate(text(record.date)) ? text(record.date) : '',
+    endDate: validDate(text(record.endDate))
+      ? text(record.endDate)
+      : validDate(text(record.date))
+        ? text(record.date)
+        : '',
     startTime: minutes(startTime) !== null ? startTime : '',
     endTime: minutes(endTime) !== null ? endTime : '',
     sessionType: text(record.sessionType),
@@ -80,20 +95,24 @@ export function normalizeSession(record) {
   };
 }
 export function validInterval(s) {
-  return (
-    !!s.date &&
-    minutes(s.startTime) !== null &&
-    minutes(s.endTime) !== null &&
-    minutes(s.endTime) > minutes(s.startTime)
-  );
+  const start = absoluteMinutes(s?.date, s?.startTime),
+    end = absoluteMinutes(s?.endDate || s?.date, s?.endTime);
+  return start !== null && end !== null && end > start;
+}
+export function intervalBounds(s, referenceDate = s?.date) {
+  if (!validInterval(s)) return null;
+  const offset = dayMinutes(referenceDate);
+  if (offset === null) return null;
+  return [
+    absoluteMinutes(s.date, s.startTime) - offset,
+    absoluteMinutes(s.endDate || s.date, s.endTime) - offset,
+  ];
 }
 export function overlaps(a, b) {
+  if (!validInterval(a) || !validInterval(b)) return false;
   return (
-    a.date === b.date &&
-    validInterval(a) &&
-    validInterval(b) &&
-    minutes(a.startTime) < minutes(b.endTime) &&
-    minutes(b.startTime) < minutes(a.endTime)
+    absoluteMinutes(a.date, a.startTime) < absoluteMinutes(b.endDate || b.date, b.endTime) &&
+    absoluteMinutes(b.date, b.startTime) < absoluteMinutes(a.endDate || a.date, a.endTime)
   );
 }
 export function sortSessions(data) {
@@ -163,9 +182,10 @@ function matches(s, filters) {
     const from = minutes(filters.from) ?? 0,
       to = minutes(filters.to) ?? 1440;
     if (from >= to) return false;
+    const [start, end] = intervalBounds(s);
     if (filters.fit === 'contained') {
-      if (minutes(s.startTime) < from || minutes(s.endTime) > to) return false;
-    } else if (minutes(s.startTime) >= to || minutes(s.endTime) <= from) return false;
+      if (start < from || end > to) return false;
+    } else if (start >= to || end <= from) return false;
   }
   return true;
 }
@@ -226,10 +246,12 @@ export function sessionStates(s, planned, conflicted) {
   return states;
 }
 /** Merge overlaps before exposing free slots. Meeting end == next start is not a gap. */
-export function freeSlots(data, dayStart = 9 * 60, dayEnd = 18 * 60) {
+export function freeSlots(data, dayStart = 9 * 60, dayEnd = 18 * 60, date) {
   const intervals = data
     .filter(validInterval)
-    .map((s) => [Math.max(dayStart, minutes(s.startTime)), Math.min(dayEnd, minutes(s.endTime))])
+    .map((s) => intervalBounds(s, date || s.date))
+    .filter(Boolean)
+    .map(([start, end]) => [Math.max(0, dayStart, start), Math.min(1440, dayEnd, end)])
     .filter(([a, b]) => a < b)
     .sort((a, b) => a[0] - b[0]);
   const gaps = [];
@@ -243,47 +265,51 @@ export function freeSlots(data, dayStart = 9 * 60, dayEnd = 18 * 60) {
 }
 export function conflictMap(data) {
   const map = new Map(data.map((s) => [s.id, []]));
-  const grouped = new Map();
-  for (const s of data.filter(validInterval)) {
-    if (!grouped.has(s.date)) grouped.set(s.date, []);
-    grouped.get(s.date).push(s);
-  }
-  for (const group of grouped.values()) {
-    const sorted = sortSessions(group);
-    for (let i = 0; i < sorted.length; i++)
-      for (
-        let j = i + 1;
-        j < sorted.length && minutes(sorted[j].startTime) < minutes(sorted[i].endTime);
-        j++
-      )
-        if (overlaps(sorted[i], sorted[j])) {
-          map.get(sorted[i].id).push(sorted[j]);
-          map.get(sorted[j].id).push(sorted[i]);
-        }
-  }
+  const sorted = sortSessions(data.filter(validInterval)).sort(
+    (a, b) => absoluteMinutes(a.date, a.startTime) - absoluteMinutes(b.date, b.startTime),
+  );
+  for (let i = 0; i < sorted.length; i++)
+    for (
+      let j = i + 1;
+      j < sorted.length &&
+      absoluteMinutes(sorted[j].date, sorted[j].startTime) <
+        absoluteMinutes(sorted[i].endDate || sorted[i].date, sorted[i].endTime);
+      j++
+    )
+      if (overlaps(sorted[i], sorted[j])) {
+        map.get(sorted[i].id).push(sorted[j]);
+        map.get(sorted[j].id).push(sorted[i]);
+      }
   return map;
 }
 /** Greedy lanes per connected overlap group; adjacent sessions share one lane. */
-export function timelineLayout(data) {
-  const sorted = sortSessions(data.filter(validInterval)),
+export function timelineLayout(data, date = data.find(validInterval)?.date) {
+  const sorted = data
+      .filter(validInterval)
+      .map((session) => {
+        const [start, end] = intervalBounds(session, date);
+        return { session, start: Math.max(0, start), end: Math.min(1440, end) };
+      })
+      .filter(({ start, end }) => start < end)
+      .sort((a, b) => a.start - b.start),
     groups = [];
-  for (const s of sorted) {
+  for (const item of sorted) {
     let g = groups.at(-1);
-    if (!g || minutes(s.startTime) >= g.end) {
-      g = { end: minutes(s.endTime), sessions: [] };
+    if (!g || item.start >= g.end) {
+      g = { end: item.end, sessions: [] };
       groups.push(g);
     }
-    g.end = Math.max(g.end, minutes(s.endTime));
-    g.sessions.push(s);
+    g.end = Math.max(g.end, item.end);
+    g.sessions.push(item);
   }
   return groups.flatMap((g) => {
     const ends = [],
       placed = [];
-    for (const s of g.sessions) {
-      let lane = ends.findIndex((end) => end <= minutes(s.startTime));
+    for (const item of g.sessions) {
+      let lane = ends.findIndex((end) => end <= item.start);
       if (lane < 0) lane = ends.length;
-      ends[lane] = minutes(s.endTime);
-      placed.push({ session: s, lane });
+      ends[lane] = item.end;
+      placed.push({ ...item, lane });
     }
     return placed.map((p) => ({ ...p, lanes: ends.length }));
   });

@@ -266,7 +266,10 @@ export function normalizeSideEvent(row) {
   )
     return null;
   const date = typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : '';
-  if (row.timingStatus && !['confirmed', 'tentative', 'unknown'].includes(row.timingStatus))
+  if (
+    row.timingStatus &&
+    !['confirmed', 'tentative', 'listed', 'unknown'].includes(row.timingStatus)
+  )
     return null;
   const item = normalizeSession({
     id: `side:${row.id}`,
@@ -274,14 +277,17 @@ export function normalizeSideEvent(row) {
     abstract: row.description,
     code: 'EVENT',
     date,
+    endDate: row.endDate || date,
     startTime: row.startTime || '',
     endTime: row.endTime || '',
     sessionType: 'Side event',
     level: '',
     levelLabel: 'No technical level',
     venue: row.venue || '',
+    room: row.room || '',
     topics: row.category ? [row.category] : [],
-    dataSource: 'official-side-event',
+    uiState: row.uiState,
+    dataSource: 'curated-side-event',
     itemType: 'sideEvent',
   });
   if (!item) return null;
@@ -293,7 +299,9 @@ export function normalizeSideEvent(row) {
     timezone: typeof row.timezone === 'string' ? row.timezone : '',
     sourceUrl: row.sourceUrl,
     sourceName: typeof row.sourceName === 'string' ? row.sourceName : '',
+    listingUrl: typeof row.listingUrl === 'string' ? row.listingUrl : '',
     verifiedAt: typeof row.verifiedAt === 'string' ? row.verifiedAt : '',
+    sponsor: typeof row.sponsor === 'string' ? row.sponsor : '',
     registrationUrl: typeof row.registrationUrl === 'string' ? row.registrationUrl : '',
     registrationRequired:
       typeof row.registrationRequired === 'boolean' ? row.registrationRequired : null,

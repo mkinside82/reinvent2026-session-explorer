@@ -84,7 +84,7 @@ Node.jsのパッケージ管理にはpnpmを使います。`pnpm install`で開�
 
 - 実際のAWSセッションカタログをページ末尾まで取得し、タイトル・概要・コード・登壇者・トピックなどを検索
 - Level 200以上、日付、時間、形式、会場、Track、Topic、Service、Speakerによる絞り込み
-- Sessionsと公式情報を確認したSide eventsの分離表示
+- AWS公式体験と、出典リンク付きの非公式Side eventsを分けて表示
 - Card / Compact表示、タイトル・時刻順、最大3件の比較
 - My PlanのTimeline / List表示、重複検出、空き時間からのセッション検索
 - AWS接続時はScheduleの予約済みセッションを起動時に非同期で読み込み、Timeline、ICS、任意のGoogle Calendar同期に反映
@@ -136,7 +136,7 @@ AWS接続やGoogle Calendarの設定手順は[アプリガイド（日本語）]
 - AWSお気に入りは単体またはMy Planから最大10件を登録し、Scheduleを再読込して結果を確認します。AWSの応答が不明な場合は安全のため自動再送せず、Scheduleで確認してください。AWSお気に入り書き込みは実アカウントで未検証です。
 - Google Calendarの実アカウント接続とAPI書き込みは、この環境では未検証です。ユーザー自身のOAuth設定が必要です。
 - MCPは読み取り専用で、セッション検索・Schedule読取・重複確認・空き時間提案を提供し、予約や取消はできません。ローカルstdio接続に対応したクライアント、またはSecure MCP Tunnel設定後のChatGPT Webから利用できます。
-- Side eventsは出典を確認できたものだけを掲載します。時刻や申込条件が公式に確認できない場合は未確認のまま表示します。
+- AWS公式体験に加え、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に掲載されたサイドイベントも掲載します。この一覧はAWS非公式で、AWSとは提携・承認関係にありません。掲載時刻や満席情報は主催者による確認を意味せず、申込条件・会場・受付状況も変更される場合があるため、申込前に各イベントの主催者ページで確認してください。
 
 ## ライセンス
 
