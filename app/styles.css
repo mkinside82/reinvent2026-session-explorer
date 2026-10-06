@@ -61,3 +61,5 @@
 .reservation-result strong{color:var(--muted)}.reservation-result strong.confirmed{color:var(--success)}.reservation-result strong.failed{color:var(--danger)}.reservation-result strong.unknown{color:#80652f}.reservation-actions{display:grid;grid-template-columns:1fr;gap:6px;margin:10px 0 2px}.reservation-actions .reserve-planned{margin:0}.reservation-actions #manageReservations{justify-self:start}
 
 .recommendation-fit{display:block;color:var(--muted);font-size:.75rem;margin-top:.2rem}
+
+.schedule-status{grid-column:1/-1;margin:0;color:var(--muted);font-size:.75rem;line-height:1.45}.schedule-status.is-error{color:var(--danger)}.plan-item-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.plan-item-actions .status-tag{flex:none}

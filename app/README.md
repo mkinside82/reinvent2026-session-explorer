@@ -30,7 +30,7 @@ Live mode requires macOS, Rust, and Cargo:
 
 The first start builds the local Rust companion and prints the app URL. Choose **Builder ID sign-in** in the browser. The attendee must have a registered AWS re:Invent account. AWS OAuth uses Authorization Code with PKCE and a loopback callback; the app keeps the access token in process memory and stores the refresh token in macOS Keychain. It does not use a client secret or fall back to plaintext token storage.
 
-Live reads the attendee's AWS Events catalog. My Plan is local browser data and adding an item to it does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. AWS may reject reservations and cancellations while the operation is closed. Live reservation and cancellation flows have not been verified with a real account.
+Live reads the attendee's AWS Events catalog. At startup it reads reserved sessions from AWS Schedule in the background and merges them into the My Plan Timeline / List without duplicating local picks. Search and other actions remain usable while Schedule loads; on failure the displayed data is kept and can be refreshed. AWS favorites are not imported. Local picks stay in browser storage, and adding one does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. ICS export and optional Google Calendar sync can include both local picks and imported reservations. AWS may reject reservations and cancellations while the operation is closed. Live reservation and cancellation flows have not been verified with a real account.
 
 ## Google Calendar (optional)
 
@@ -46,7 +46,7 @@ The app requests the `calendar.app.created` scope and manages events in a dedica
 
 - Demo and Live are selected by how the app is launched; there is no in-app data-source switch. Live failures never fall back to fictional Demo data.
 - AWS credentials stay in the local app process and macOS Keychain. They are not stored in browser storage or static build files.
-- My Plan is stored in the current browser profile's local storage. It is not sent to AWS or Google automatically.
+- Local My Plan picks are stored in the current browser profile's local storage. Live also reads reserved sessions from AWS Schedule; favorites are not imported. Neither source is written back automatically.
 - The local server binds to loopback. Do not expose it through a public tunnel or network interface.
 - ICS export creates a file for manual import; it is not continuous calendar synchronization.
 
