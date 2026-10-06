@@ -30,7 +30,15 @@ Live mode requires macOS, Rust, and Cargo:
 
 The first start builds the local Rust companion and prints the app URL. Choose **Builder ID sign-in** in the browser. The attendee must have a registered AWS re:Invent account. AWS OAuth uses Authorization Code with PKCE and a loopback callback; the app keeps the access token in process memory and stores the refresh token in macOS Keychain. It does not use a client secret or fall back to plaintext token storage.
 
+The **Translate to Japanese** action in session details uses Chrome's on-device Translator API when available on desktop. Chrome may download a language model the first time. Original text stays unchanged, and Chrome / Safari page translation remains the fallback. Chrome's Translator API is not available on mobile.
+
+Live recommendations include source-linked, dated themes that expire automatically. You can also choose interest areas; matching sessions are ranked with your My Plan conflicts and saved in the current browser.
+
 Live reads the attendee's AWS Events catalog. At startup it reads reserved sessions, favorites, and personal time from AWS Schedule in the background. Reserved sessions and personal time appear in the My Plan Timeline / List without duplicating local picks; favorites appear in a dedicated tab and can be added to My Plan from a card. Favorites are not added to the plan automatically. You can create, edit, and delete AWS personal-time entries from My Plan; writes are reconciled against a fresh AWS Schedule read. UTC times are converted to venue time. Search and other actions remain usable while Schedule loads; on failure the displayed data is kept and can be refreshed. Local picks stay in browser storage, and adding one does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. ICS export and optional Google Calendar sync can include local picks and items imported from AWS Schedule. AWS may reject reservations and cancellations while the operation is closed. AWS personal-time, reservation, and cancellation writes have not been verified with a real account.
+
+### Local MCP for AI clients
+
+Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the Live companion server if needed. MCP tools can search sessions, read the signed-in attendee's AWS Schedule, and check requested session IDs for conflicts. If signed out, `begin_aws_sign_in` returns a URL for the user to open. No reservation, cancellation, or personal-time write tools are exposed. Configure your MCP client with the absolute path to `app/reinvent-explorer` as `command` and `mcp` as its argument. The client must support local stdio MCP. Remote-only MCP clients are not connected by this local server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
 
 ## Google Calendar (optional)
 

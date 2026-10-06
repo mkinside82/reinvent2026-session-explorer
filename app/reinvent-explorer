@@ -79,7 +79,17 @@ case "${1:-help}" in
       lsof -nP -iTCP:8484-8489 -sTCP:LISTEN 2>/dev/null || true
     fi
     ;;
+  mcp)
+    if ! command -v node >/dev/null; then
+      print -u2 "Node.js is required to run the local MCP server."
+      exit 1
+    fi
+    if ! server_pid >/dev/null; then
+      "$0" start >&2
+    fi
+    exec node "$APP_DIR/mcp-server.mjs"
+    ;;
   help|*)
-    print -r -- "Usage: $0 {start|stop|status|diagnostics}"
+    print -r -- "Usage: $0 {start|stop|status|diagnostics|mcp}"
     ;;
 esac

@@ -46,11 +46,14 @@ npm run demo
 - My PlanのTimeline / List表示、重複検出、空き時間からのセッション検索
 - LiveではAWS Scheduleの予約済みセッションを起動時に非同期で読み込み、Timeline、ICS、任意のGoogle Calendar同期に反映
 - AWS公式の注目テーマを根拠付きで紹介し、My Plan候補と重ならないセッションを優先表示
+- Liveでは興味分野を選んでおすすめを調整。関心設定はブラウザー内に保存
+- 対応するデスクトップChromeでは詳細画面から端末内モデルでセッション概要を日本語翻訳
 - 詳細画面からAWS公式イベントカタログを開く導線
 - 日本語 / EnglishのUI切替
 - 1回限りのICS書き出し
 - オプトインGoogle Calendar連携。専用カレンダーに選択したPlan項目を追加・更新・削除
-- 対応ブラウザーでは、ページを開いている間だけ利用できるWebMCP試作（カタログ検索、Plan読取、ローカル衝突確認、Plan編集）
+- ローカルstdio MCPサーバー（セッション検索、AWS Schedule読取、重複確認、Builder IDサインイン開始）
+- 対応ブラウザーでは、ページを開いている間だけ利用できるWebMCP試作（My Plan読取・編集など）
 
 Google Calendar同期はAWS予約との同期ではありません。詳細な設定方法は[アプリガイド（日本語）](app/README.ja.md)を参照してください。
 
@@ -67,7 +70,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - [予約取消（CancelReservation）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-cancelreservation.html)
 - [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
 
-このアプリのLive接続はREST APIを直接呼び出します。ブラウザー内のWebMCPは、このタブのカタログ検索やMy Plan操作をAIツールへ公開する試作です。AWS公式Events MCPサーバーへの接続とは別の機能です。
+このアプリのLive接続はREST APIを直接呼び出します。`./app/reinvent-explorer mcp`で起動するローカルstdio MCPサーバーは、ブラウザー画面を開かずにセッション検索・AWS Schedule読取・時間重複確認を提供します。MCPサーバーはLiveローカルサーバーとAWSへのサインイン状態を利用します。ブラウザー内WebMCPは別機能で、このタブを開いている間だけMy Plan操作を公開します。AWS公式Events MCPサーバーともそれぞれ別の機能です。
 
 ## DemoとLive
 
@@ -88,7 +91,7 @@ LiveモードとGoogle Calendarの設定手順は[アプリガイド（日本語
 
 - AWS一括予約はLiveモードで明示確認後に最大10件を送信し、Schedule再読込と個別結果表示を行います。既存予約の解除も可能ですが、AWS Scheduleに載っている項目だけが対象で、取消APIは1件ずつ呼び出します。予約済み項目はMy Planに取り込み表示しますが、AWS予約とローカル候補の状態は別管理です。
 - Google Calendarの実アカウント接続とAPI書き込みは、この環境では未検証です。ユーザー自身のOAuth設定が必要です。
-- WebMCP試作はブラウザー内だけの機能で、ChatGPTなどから接続できる独立MCPサーバーではありません。AWSカタログやAWSスケジュールへのChatGPT連携には[AWS公式Events MCP](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)を利用できます。
+- ローカルstdio MCPサーバーは検索・Schedule読取・重複確認のみを提供し、予約や取消はできません。MCPクライアントごとにローカルstdio接続の対応状況が異なります。リモート接続型MCPクライアントには[AWS公式Events MCP](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)を利用できます。
 - Side eventsは出典を確認できたものだけを掲載します。時刻や申込条件が公式に確認できない場合は未確認のまま表示します。
 
 ## ライセンス
