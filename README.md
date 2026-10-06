@@ -18,7 +18,7 @@ npm run demo
 
 ターミナルに表示された `http://127.0.0.1:<port>/` をブラウザーで開きます。終了はターミナルで `Ctrl-C` です。AIに頼むときは、次の文を使えます。
 
-> `QUICKSTART.md`を読んでDemoプレビューだけを起動し、URLを教えてください。AWS/Googleの認証や外部書き込み、テスト、コミット、pushは行わないでください。
+> `QUICKSTART.md`を読んでDemoプレビューを起動し、URLを教えてください。AWS/Googleへのサインインやデータ書き込みは行わないでください。
 
 詳しいAI向け手順は[QUICKSTART.md](QUICKSTART.md)を参照してください。AWSの実カタログを使うLiveモードはmacOSとRust/Cargoが必要です。アプリ利用ガイドは[日本語版](app/README.ja.md)と[English](app/README.md)を用意しています。
 
@@ -70,30 +70,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - **Demo**: 静的ビルドの架空セッションで画面を確認する開発・プレビュー用モードです。
 - **Live**: Mac上のRustローカルサーバーがAWS Events APIからカタログを取得する利用モードです。サインインや通信に失敗した場合、Demoデータへ切り替わることはありません。
 
-## macOSで起動
-
-必要なもの: macOS、Node.js、Rust/Cargo。Live認証ではmacOS Keychainを使います。
-
-```sh
-cd app
-./reinvent-explorer start
-./reinvent-explorer status
-./reinvent-explorer diagnostics
-./reinvent-explorer stop
-```
-
-初回起動時にRustサーバーをビルドし、ブラウザーで開くlocalhost URLを表示します。アプリで **Builder ID sign-in** を選ぶとAWSのサインインへ進みます。AWSアカウントはre:Invent登録済みである必要があります。
-
-Google Calendarを使う場合は、ユーザー自身のGoogle Cloud projectでCalendar APIとDesktop OAuth clientを設定します。client IDはMacのKeychainに保存されます。詳しい手順は[アプリガイド（日本語）](app/README.ja.md)を参照してください。
-
-フロントエンドの静的出力を作る場合:
-
-```sh
-cd app
-npm run build
-```
-
-`app/dist/`はDemo専用の生成物です。RustサーバーのLive機能は含みません。
+LiveモードとGoogle Calendarの設定手順は[アプリガイド（日本語）](app/README.ja.md)を参照してください。
 
 ## データと保存
 
@@ -110,11 +87,6 @@ npm run build
 - WebMCP試作はブラウザー内だけの機能で、ChatGPTなどから接続できる独立MCPサーバーではありません。AWSカタログやAWSスケジュールへのChatGPT連携には[AWS公式Events MCP](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)を利用できます。
 - Side eventsは出典を確認できたものだけを掲載します。時刻や申込条件が公式に確認できない場合は未確認のまま表示します。
 
-## リポジトリ構成
-
-- `app/`: Web UI、静的Demo、macOSローカルRustサーバー
-- `app/README.ja.md` / `app/README.md`: アプリの利用・開発ガイド（日本語 / English）
-
 ## ライセンス
 
-ライセンスは未設定です。公開・再利用の前に、AWS由来コンテンツや依存コンポーネントの利用条件を確認してライセンスを選定してください。
+ソースコードは[MIT License](LICENSE)で公開します。AWSの商標やAWS Eventsから取得するイベント情報には、それぞれの権利者・利用条件が適用されます。

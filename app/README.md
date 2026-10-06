@@ -58,3 +58,7 @@ npm test
 ```
 
 The frontend uses Node.js built-ins. The Live companion is in `server/` and requires Rust/Cargo. Automated tests and fixture results do not replace verification with the attendee's AWS or Google account.
+
+## License
+
+The source code is licensed under the [MIT License](../LICENSE). AWS trademarks and event information obtained from AWS are subject to their respective owners' terms.
