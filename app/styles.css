@@ -613,6 +613,10 @@ svg {
   padding: 18px;
   position: sticky;
   top: 184px;
+  max-height: calc(100dvh - 200px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   min-width: 0;
 }
 .plan-heading {
@@ -1338,6 +1342,11 @@ input[type='checkbox'] {
   }
   .plan-panel {
     position: static;
+    top: auto;
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
     padding: 16px;
   }
   .plan-panel:not(.mobile-active) {
@@ -1858,6 +1867,23 @@ input[type='checkbox'] {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f9faff;
+}
+.google-panel-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.7rem;
+  cursor: pointer;
+}
+.google-panel-summary strong {
+  font-size: 0.875rem;
+}
+.google-panel-summary .hint {
+  margin: 0;
+  text-align: right;
+}
+.google-panel-content {
+  margin-top: 0.8rem;
 }
 .google-panel-top {
   display: flex;

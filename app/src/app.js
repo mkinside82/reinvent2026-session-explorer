@@ -60,6 +60,7 @@ const $ = (s) => document.querySelector(s);
 const storage = {
   getItem: (key) => localStorage.getItem(key),
   setItem: (key, value) => localStorage.setItem(key, value),
+  removeItem: (key) => localStorage.removeItem(key),
 };
 initializeLanguage(storage, globalThis.navigator?.language);
 const applyStaticLanguage = staticLanguageBindings(document);
@@ -170,8 +171,8 @@ const plannerItems = () => {
 const currentPlanKey = () =>
   state.source === 'demo'
     ? PLAN_KEY
-    : state.source === 'live' && state.accountId
-      ? ui`${PLAN_KEY}:aws:reinvent2026:${state.accountId}`
+    : state.source === 'live'
+      ? ui`${PLAN_KEY}:aws:reinvent2026:${state.accountId || 'guest'}`
       : null;
 const googleSelectionKey = () => ui`reinvent-google-selected:${currentPlanKey() || 'demo'}`;
 function readGoogleSelection() {
@@ -588,9 +589,11 @@ function renderSourceInfo() {
   $('#catalogNotice').textContent = note;
   $('#catalogNotice').hidden = !note;
   $('#planFootnote').textContent = live
-    ? t(
-        'AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません',
-      )
+    ? state.accountId
+      ? t(
+          'AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません',
+        )
+      : t('候補はこのブラウザーに保存 · サインイン後にアカウント別で引き継ぎ')
     : t('候補はこのブラウザーに保存 · AWS予約とは未同期');
 }
 function renderKindSwitch() {
@@ -1518,10 +1521,23 @@ async function initialize() {
       state.localApiAvailable = true;
       if (session.authenticated && session.accountId) {
         state.accountId = session.accountId;
-        const plan = readPlan(storage, currentPlanKey());
+        let plan = readPlan(storage, currentPlanKey());
+        if (!plan.ids.length) {
+          const guestPlanKey = `${PLAN_KEY}:aws:reinvent2026:guest`;
+          const guestPlan = readPlan(storage, guestPlanKey);
+          if (guestPlan.ids.length) {
+            const warning = writePlan(storage, guestPlan.ids, currentPlanKey());
+            plan = { ...guestPlan, warning: warning || guestPlan.warning };
+            if (!warning) storage.removeItem(guestPlanKey);
+          }
+        }
         state.plan = plan.ids;
         state.warning = plan.warning;
         void refreshAwsSchedule();
+      } else {
+        const plan = readPlan(storage, currentPlanKey());
+        state.plan = plan.ids;
+        state.warning = plan.warning;
       }
       state.googleSelected = readGoogleSelection();
       try {

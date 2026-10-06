@@ -158,24 +158,6 @@
             ><button id="addPersonalTime" class="quiet small" hidden>AWS個人予定を追加</button
             ><button id="refreshSchedule" class="quiet small" hidden>AWS Scheduleを更新</button>
           </div>
-          <section id="googlePanel" class="google-panel" hidden>
-            <div class="google-panel-top">
-              <div>
-                <strong>Google Calendar</strong>
-                <p id="googleStatus" class="hint">未連携</p>
-              </div>
-              <div>
-                <button id="googleConnect" class="quiet small" hidden>Googleに接続</button
-                ><button id="googleSync" class="primary small" disabled>選択した予定を同期</button>
-              </div>
-            </div>
-            <div id="googleEventChoices"></div>
-            <div id="googleSyncResults" class="google-sync-results" aria-live="polite"></div>
-            <p class="hint">
-              専用カレンダーに予定を追加・更新します。My
-              Planへの追加だけでは予約されません。Google同期から外す操作は対象の予定だけを削除します。
-            </p>
-          </section>
           <div class="plan-controls">
             <label class="plan-date-label"
               ><span class="sr-only">Date</span
@@ -190,6 +172,28 @@
           <p id="planFootnote" class="plan-footnote">
             候補はこのブラウザーに保存 · AWS接続時は予約をScheduleから同期
           </p>
+          <details id="googlePanel" class="google-panel" hidden>
+            <summary class="google-panel-summary">
+              <strong>Google Calendar同期</strong>
+              <span id="googleStatus" class="hint">未連携</span>
+            </summary>
+            <div class="google-panel-content">
+              <div class="google-panel-top">
+                <div>
+                  <button id="googleConnect" class="quiet small" hidden>Googleに接続</button>
+                </div>
+                <div>
+                  <button id="googleSync" class="primary small" disabled>選択した予定を同期</button>
+                </div>
+              </div>
+              <div id="googleEventChoices"></div>
+              <div id="googleSyncResults" class="google-sync-results" aria-live="polite"></div>
+              <p class="hint">
+                専用カレンダーに予定を追加・更新します。My
+                Planへの追加だけでは予約されません。Google同期から外す操作は対象の予定だけを削除します。
+              </p>
+            </div>
+          </details>
         </aside>
       </main>
     </div>

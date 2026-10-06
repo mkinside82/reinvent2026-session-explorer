@@ -45,6 +45,8 @@ const english = Object.freeze({
     'AWS reservations sync from Schedule · local picks stay in this browser for this account · removing a pick does not cancel an AWS reservation',
   '候補はこのブラウザーに保存 · AWS予約とは未同期':
     'Picks are stored in this browser · not synced with AWS reservations',
+  '候補はこのブラウザーに保存 · サインイン後にアカウント別で引き継ぎ':
+    'Picks are stored in this browser · carried into your account after sign-in',
   'AWS Events API · re:Invent 2026 · AWS予約をMy Planに同期。候補はアカウント別にローカル保存します。':
     'AWS Events API · re:Invent 2026 · AWS reservations sync to My Plan. Picks are stored locally by attendee account.',
   候補を外す: 'Remove pick',
