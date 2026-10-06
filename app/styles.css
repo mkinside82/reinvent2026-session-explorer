@@ -444,6 +444,7 @@ svg {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
 }
@@ -597,6 +598,7 @@ svg {
 }
 .compact-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   margin-top: 5px;
@@ -2286,6 +2288,11 @@ input[type='checkbox'] {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.favorite-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 .plan-item-actions .status-tag {
   flex: none;

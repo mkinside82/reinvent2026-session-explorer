@@ -23,6 +23,8 @@ import {
   fetchRecommendationNews,
   reserveLiveSessions,
   cancelLiveReservations,
+  associateLiveFavorites,
+  removeLiveFavorites,
   saveLivePersonalTime,
   googleCalendarStatus,
   configureGoogleCalendar,
@@ -118,6 +120,12 @@ const state = {
   reservationStage: 'select',
   reservationMode: 'reserve',
   reservationBusy: false,
+  favoriteSelection: new Set(),
+  favoriteResults: null,
+  favoriteStage: 'select',
+  favoriteBusy: false,
+  favoritePending: new Set(),
+  favoriteUnknown: new Set(),
   plan: runtimeMode === 'demo' ? saved.ids : [],
   warning: runtimeMode === 'demo' ? saved.warning : '',
   filters: initial.kind === 'sideEvents' ? initialSideEventFilters : initialSessionFilters,
@@ -342,7 +350,8 @@ function renderExplore(map) {
   const found = results(),
     plan = new Set(state.plan),
     sideMode = state.exploreKind === 'sideEvents',
-    favoriteMode = state.exploreKind === 'favorites';
+    favoriteMode = state.exploreKind === 'favorites',
+    favoritesEnabled = state.source === 'live' && state.localApiAvailable && !!state.accountId;
   $('#resultCount').textContent = sideMode
     ? ui`${found.length.toLocaleString(getLocale())} side events`
     : state.status === 'loading'
@@ -370,8 +379,28 @@ function renderExplore(map) {
     const subset = found.slice(0, displayLimit);
     $('#cards').innerHTML =
       (state.view === 'compact'
-        ? renderCompact(subset, plan, map, state.compare)
-        : subset.map((s) => renderCard(s, plan, map, state.compare)).join('')) +
+        ? renderCompact(
+            subset,
+            plan,
+            map,
+            state.compare,
+            favoritesEnabled,
+            state.favoritePending,
+            state.favoriteUnknown,
+          )
+        : subset
+            .map((s) =>
+              renderCard(
+                s,
+                plan,
+                map,
+                state.compare,
+                favoritesEnabled,
+                state.favoritePending.has(s.id),
+                state.favoriteUnknown.has(s.id),
+              ),
+            )
+            .join('')) +
       (found.length > displayLimit
         ? ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length - displayLimit}件）</button>`
         : '');
@@ -415,8 +444,28 @@ function renderExplore(map) {
     const subset = found.slice(0, displayLimit);
     $('#cards').innerHTML =
       (state.view === 'compact'
-        ? renderCompact(subset, plan, map, state.compare)
-        : subset.map((s) => renderCard(s, plan, map, state.compare)).join('')) +
+        ? renderCompact(
+            subset,
+            plan,
+            map,
+            state.compare,
+            favoritesEnabled,
+            state.favoritePending,
+            state.favoriteUnknown,
+          )
+        : subset
+            .map((s) =>
+              renderCard(
+                s,
+                plan,
+                map,
+                state.compare,
+                favoritesEnabled,
+                state.favoritePending.has(s.id),
+                state.favoriteUnknown.has(s.id),
+              ),
+            )
+            .join('')) +
       (found.length > displayLimit
         ? ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length - displayLimit}件）</button>`
         : '');
@@ -461,6 +510,14 @@ function renderPlan(items, map) {
   $('#exportCalendar').disabled = !items.some(validInterval);
   const reservationAvailable =
     state.source === 'live' && state.localApiAvailable && !!state.accountId;
+  const favoriteCandidates = chosen().filter((s) => s.dataSource === 'aws'),
+    unfavoritedCount = favoriteCandidates.filter(
+      (s) => !state.awsFavorites.has(s.id) && !state.favoriteUnknown.has(s.id),
+    ).length;
+  $('#favoritePlanned').hidden = !reservationAvailable || !favoriteCandidates.length;
+  $('#favoritePlanned').disabled = !unfavoritedCount || state.favoriteBusy;
+  $('#favoritePlanned').textContent =
+    ui`${t('PlanのAWSセッションをお気に入りに追加')} · ${unfavoritedCount}`;
   $('#reservePlanned').hidden = !reservationAvailable;
   $('#manageReservations').hidden = !reservationAvailable;
   $('#addPersonalTime').hidden = !reservationAvailable;
@@ -525,13 +582,30 @@ function renderPlan(items, map) {
       t('日付を切り替えるか、セッションを追加してください。'),
     );
   else if (state.planView === 'list')
-    content = renderPlanList(rows, map, state.planDate === 'all', new Set(state.plan));
+    content = renderPlanList(
+      rows,
+      map,
+      state.planDate === 'all',
+      new Set(state.plan),
+      reservationAvailable,
+      state.favoritePending,
+      state.favoriteUnknown,
+    );
   else if (state.planDate === 'all')
     content = blank(
       t('Timelineの日付を選んでください'),
       t('1日ずつ選ぶと、予定と空き時間を確認できます。'),
     );
-  else content = renderTimeline(rows, map, state.planDate, new Set(state.plan));
+  else
+    content = renderTimeline(
+      rows,
+      map,
+      state.planDate,
+      new Set(state.plan),
+      reservationAvailable,
+      state.favoritePending,
+      state.favoriteUnknown,
+    );
   const missing = state.plan.filter((id) => !byId(id));
   if (state.status === 'ready' && missing.length)
     content += ui`<div class="notice" style="margin-top:14px">現在のデータにない候補が${missing.length}件あります。${missing.map((id) => ui`<div>${esc(id)} <button class="remove-button" data-remove-plan="${esc(id)}">削除</button></div>`).join('')}</div>`;
@@ -727,6 +801,243 @@ function renderGoogleResults() {
 function reservationCandidates() {
   return chosen().filter((item) => item.dataSource === 'aws');
 }
+function plannedFavoriteCandidates() {
+  return chosen().filter((item) => item.dataSource === 'aws');
+}
+function renderFavoriteDialog() {
+  const candidates = plannedFavoriteCandidates(),
+    selectedIds = [...state.favoriteSelection],
+    selected = selectedIds.map(byId).filter(Boolean),
+    body = $('#favoriteBody'),
+    next = $('#favoriteNext'),
+    back = $('#favoriteBack');
+  $('#favoriteHeading').textContent = t('AWSお気に入りに追加するセッションを選択');
+  if (state.favoriteStage === 'results') {
+    const failures = new Map(
+      (state.favoriteResults?.failed || []).map((row) => [row.sessionId, row]),
+    );
+    const unknown = new Set(state.favoriteResults?.unknown || []);
+    const successful = new Set(state.favoriteResults?.successful || []);
+    body.innerHTML = selected
+      .map((item) => {
+        const failure = failures.get(item.id),
+          confirmed = successful.has(item.id) && state.favoriteResults?.scheduleConfirmed,
+          label = confirmed
+            ? t('お気に入り登録済み・Scheduleで確認済み')
+            : unknown.has(item.id)
+              ? t('登録結果不明・Scheduleで未確認')
+              : failure
+                ? t('AWSがお気に入りを受け付けませんでした')
+                : successful.has(item.id)
+                  ? t('AWS応答成功・Schedule未確認')
+                  : t('お気に入り登録に失敗しました'),
+          statusClass = confirmed
+            ? 'confirmed'
+            : failure
+              ? 'failed'
+              : unknown.has(item.id)
+                ? 'unknown'
+                : 'confirmed';
+        return ui`<div class="reservation-result"><strong class="${statusClass}">${esc(label)}</strong><span>${esc(item.title)} · ${esc(item.code)}</span>${failure ? ui`<small>${esc(favoriteFailureLabel(failure.code))}</small>` : ''}</div>`;
+      })
+      .join('');
+    $('#favoriteIntro').textContent = state.favoriteResults?.scheduleConfirmed
+      ? t('AWS Scheduleでお気に入り登録を確認しました。')
+      : t('AWS Scheduleを再読込できませんでした。結果を確認してください。');
+    next.hidden = true;
+    back.textContent = t('閉じる');
+    return;
+  }
+  if (state.favoriteStage === 'confirm') {
+    body.innerHTML = ui`<p class="reservation-warning">${t('選択したセッションをAWSお気に入りに登録します。予約は行いません。')}</p><ul class="google-sync-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`).join('')}</ul>`;
+    $('#favoriteIntro').textContent = t('登録対象を確認してください。');
+    next.textContent = t('この内容でAWSへ登録');
+    next.hidden = false;
+    next.disabled = !selected.length || state.favoriteBusy;
+    back.textContent = t('選択へ戻る');
+    return;
+  }
+  const tooMany = state.favoriteSelection.size >= 10;
+  body.innerHTML = candidates.length
+    ? candidates
+        .map((item) => {
+          const favorited = state.awsFavorites.has(item.id),
+            unknown = state.favoriteUnknown.has(item.id),
+            checked = state.favoriteSelection.has(item.id),
+            disabled = favorited || unknown || (!checked && tooMany),
+            note = favorited
+              ? t('AWSお気に入り登録済み')
+              : unknown
+                ? t('お気に入り結果不明 · AWS Scheduleを更新してください')
+                : t('お気に入りに追加予定');
+          return ui`<label class="reservation-choice ${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-favorite-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)} · ${note}</small></span></label>`;
+        })
+        .join('')
+    : blank(t('PlanにAWSセッションがありません'), t('AWSセッションをMy Planに追加してください。'));
+  $('#favoriteIntro').textContent = t('お気に入り対象を最大10件選んでください。');
+  next.textContent = ui`${t('選択内容を確認')}（${state.favoriteSelection.size}/10）`;
+  next.hidden = false;
+  next.disabled = !state.favoriteSelection.size || state.favoriteBusy;
+  back.textContent = t('閉じる');
+}
+function openFavoriteDialog() {
+  if (state.source !== 'live' || !state.localApiAvailable || !state.accountId) return;
+  const candidates = plannedFavoriteCandidates().filter(
+    (item) => !state.awsFavorites.has(item.id) && !state.favoriteUnknown.has(item.id),
+  );
+  state.favoriteSelection = new Set(candidates.slice(0, 10).map((item) => item.id));
+  state.favoriteResults = null;
+  state.favoriteStage = 'select';
+  render();
+  renderFavoriteDialog();
+  openDialog('favoriteDialog');
+}
+async function submitFavoriteBatch() {
+  const ids = [...state.favoriteSelection];
+  if (!ids.length || ids.length > 10 || state.favoriteBusy) return;
+  const button = $('#favoriteNext');
+  state.favoriteBusy = true;
+  button.disabled = true;
+  try {
+    state.favoriteResults = await associateLiveFavorites(ids);
+    for (const id of state.favoriteResults.successful || []) state.awsFavorites.add(id);
+    for (const id of state.favoriteResults.unknown || []) state.favoriteUnknown.add(id);
+    if (!state.favoriteResults.scheduleConfirmed)
+      for (const id of state.favoriteResults.successful || []) state.favoriteUnknown.add(id);
+    state.favoriteStage = 'results';
+    render();
+    renderFavoriteDialog();
+    const scheduleRefreshed = await refreshAwsSchedule({ force: true });
+    if (scheduleRefreshed && state.favoriteResults) {
+      state.favoriteResults.scheduleConfirmed = true;
+      const successful = new Set(state.favoriteResults.successful || []),
+        failed = state.favoriteResults.failed || [],
+        unknown = new Set(state.favoriteResults.unknown || []);
+      for (const id of ids) {
+        if (state.awsFavorites.has(id)) {
+          successful.add(id);
+          unknown.delete(id);
+        } else if (successful.has(id)) {
+          successful.delete(id);
+          unknown.add(id);
+        }
+      }
+      state.favoriteResults.successful = [...successful];
+      state.favoriteResults.unknown = [...unknown];
+      state.favoriteResults.failed = failed.filter((row) => !state.awsFavorites.has(row.sessionId));
+    }
+    renderFavoriteDialog();
+    render();
+  } catch (error) {
+    const ambiguous =
+      error.message === 'FAVORITE_OUTCOME_UNKNOWN' || !error.status || error.status >= 500;
+    if (ambiguous) {
+      state.favoriteResults = {
+        successful: [],
+        failed: [],
+        unknown: ids,
+        scheduleConfirmed: false,
+      };
+      state.favoriteStage = 'results';
+      for (const id of ids) state.favoriteUnknown.add(id);
+      const scheduleRefreshed = await refreshAwsSchedule({ force: true });
+      if (scheduleRefreshed) {
+        state.favoriteResults.scheduleConfirmed = true;
+        for (const id of ids) {
+          if (state.awsFavorites.has(id)) {
+            state.favoriteResults.successful.push(id);
+            state.favoriteResults.unknown = state.favoriteResults.unknown.filter(
+              (value) => value !== id,
+            );
+          }
+        }
+      }
+      renderFavoriteDialog();
+      render();
+      return;
+    }
+    const messages = {
+      SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+      EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+      RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+      FAVORITES_CLOSED: 'AWSがお気に入りの更新を受け付けていません。時間をおいてください。',
+      FAVORITE_OUTCOME_UNKNOWN:
+        '登録結果を確認できません。再送せず、AWS Scheduleでお気に入りを確認してください。',
+    };
+    notify(t(messages[error.message] || 'AWSお気に入りを更新できませんでした。'));
+  } finally {
+    state.favoriteBusy = false;
+    if ($('#favoriteDialog').open) renderFavoriteDialog();
+  }
+}
+async function toggleAwsFavorite(id) {
+  const item = byId(id);
+  if (!item || item.dataSource !== 'aws' || state.favoritePending.has(id)) return;
+  if (state.source !== 'live' || !state.localApiAvailable || !state.accountId) return;
+  const wasFavorited = state.awsFavorites.has(id);
+  state.favoritePending.add(id);
+  render();
+  if (state.detailId) renderCurrentDetail();
+  try {
+    const result = wasFavorited
+      ? await removeLiveFavorites([id])
+      : await associateLiveFavorites([id]);
+    const successIds = wasFavorited ? result.removed || [] : result.successful || [],
+      failure = (result.failed || []).find((row) => row.sessionId === id),
+      unknown = (result.unknown || []).includes(id);
+    if (unknown || (successIds.includes(id) && !result.scheduleConfirmed))
+      state.favoriteUnknown.add(id);
+    if (successIds.includes(id)) {
+      if (wasFavorited) state.awsFavorites.delete(id);
+      else state.awsFavorites.add(id);
+      for (const session of state.sessions)
+        if (session.id === id && session.uiState) session.uiState.favorite = !wasFavorited;
+    }
+    const scheduleRefreshed = await refreshAwsSchedule({ force: true });
+    if (
+      state.awsFavorites.has(id) === !wasFavorited &&
+      (scheduleRefreshed || result.scheduleConfirmed)
+    ) {
+      notify(t(wasFavorited ? 'AWSお気に入りから削除しました' : 'AWSお気に入りに追加しました'));
+    } else if (successIds.includes(id)) {
+      notify(t('AWS応答は成功しましたがScheduleで未確認です。更新して状態を確認してください。'));
+    } else if (unknown) {
+      notify(t('結果を確認できません。再送せず、AWS Scheduleのお気に入りを確認してください。'));
+    } else if (failure) {
+      notify(favoriteFailureLabel(failure.code));
+    } else {
+      notify(t('AWSお気に入りを更新できませんでした。'));
+    }
+  } catch (error) {
+    const ambiguous =
+      error.message === 'FAVORITE_OUTCOME_UNKNOWN' || !error.status || error.status >= 500;
+    if (ambiguous) {
+      state.favoriteUnknown.add(id);
+      const scheduleRefreshed = await refreshAwsSchedule({ force: true });
+      if (scheduleRefreshed && state.awsFavorites.has(id) === !wasFavorited) {
+        notify(t(wasFavorited ? 'AWSお気に入りから削除しました' : 'AWSお気に入りに追加しました'));
+      } else if (scheduleRefreshed) {
+        notify(t('AWSお気に入りを更新できませんでした。'));
+      } else {
+        notify(t('結果を確認できません。再送せず、AWS Scheduleのお気に入りを確認してください。'));
+      }
+      return;
+    }
+    const messages = {
+      SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+      EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+      RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+      FAVORITES_CLOSED: 'AWSがお気に入りの更新を受け付けていません。時間をおいてください。',
+      FAVORITE_OUTCOME_UNKNOWN:
+        '結果を確認できません。再送せず、AWS Scheduleでお気に入りを確認してください。',
+    };
+    notify(t(messages[error.message] || 'AWSお気に入りを更新できませんでした。'));
+  } finally {
+    state.favoritePending.delete(id);
+    if (state.detailId) renderCurrentDetail();
+    render();
+  }
+}
 function renderReservationDialog() {
   const candidates = reservationCandidates(),
     selectedIds = [...state.reservationSelection],
@@ -879,6 +1190,16 @@ function reservationFailureLabel(code) {
     other: 'AWSが予約を受け付けませんでした',
   };
   return t(labels[code] || 'AWSが予約を受け付けませんでした');
+}
+function favoriteFailureLabel(code) {
+  const labels = {
+    alreadyFavorited: 'AWSお気に入り登録済み',
+    RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+    EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+    SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+    FAVORITES_CLOSED: 'AWSがお気に入りの更新を受け付けていません。時間をおいてください。',
+  };
+  return t(labels[code] || 'AWSがお気に入りを受け付けませんでした');
 }
 async function openReservationDialog(mode = 'reserve') {
   if (state.source !== 'live' || !state.localApiAvailable || !state.accountId) return;
@@ -1098,6 +1419,9 @@ function renderCurrentDetail() {
       new Set(state.plan),
       conflictMap(plannerItems()),
       state.detailTranslations.get(item.id) || { status: 'idle', text: '' },
+      state.source === 'live' && state.localApiAvailable && !!state.accountId,
+      state.favoritePending.has(item.id),
+      state.favoriteUnknown.has(item.id),
     );
     const button = $('#detailContent [data-translate-detail]');
     button?.addEventListener('click', () => void translateDetail(button.dataset.translateDetail));
@@ -1389,6 +1713,7 @@ async function refreshAwsSchedule({ force = false } = {}) {
       if (state.source !== 'live' || state.accountId !== accountId) return false;
       state.awsReserved = new Set(reserved.filter((id) => typeof id === 'string'));
       state.awsFavorites = new Set(favorites.filter((id) => typeof id === 'string'));
+      state.favoriteUnknown.clear();
       state.awsPersonalTimes = adaptAwsPersonalTimes(personalTime);
       state.awsScheduleFetchedAt = Date.now();
       state.awsScheduleStatus = 'ready';
@@ -1509,6 +1834,7 @@ function switchSource(source, accountId = state.accountId) {
   state.accountId = source === 'live' ? accountId : '';
   state.awsReserved = new Set();
   state.awsFavorites = new Set();
+  state.favoriteUnknown.clear();
   state.awsPersonalTimes = [];
   state.awsScheduleStatus = 'idle';
   state.awsScheduleFetchedAt = 0;
@@ -1742,6 +2068,7 @@ function clearSignedInAccount() {
   state.googleResult = {};
   state.awsReserved = new Set();
   state.awsFavorites = new Set();
+  state.favoriteUnknown.clear();
   state.awsPersonalTimes = [];
   state.awsScheduleStatus = 'idle';
   state.awsScheduleFetchedAt = 0;
@@ -1822,6 +2149,7 @@ $('#languageSwitch').addEventListener('change', () => {
   if ($('#googleSyncDialog').open) openGoogleSyncConfirmation();
   if ($('#googleRemoveDialog').open) openGoogleRemoveConfirmation(state.pendingGoogleRemove);
   if ($('#reservationDialog').open) renderReservationDialog();
+  if ($('#favoriteDialog').open) renderFavoriteDialog();
   $('#toast').hidden = true;
 });
 $('#showSessionItems').addEventListener('click', () => setExploreKind('sessions'));
@@ -1843,6 +2171,7 @@ $('#signOutAppOnly').addEventListener('click', signOutAppOnly);
 $('#switchBuilderId').addEventListener('click', switchBuilderId);
 $('#googleSettings').addEventListener('click', () => openDialog('googleSetupDialog'));
 $('#reservePlanned').addEventListener('click', openReservationDialog);
+$('#favoritePlanned').addEventListener('click', openFavoriteDialog);
 $('#manageReservations').addEventListener('click', () => openReservationDialog('cancel'));
 $('#refreshSchedule').addEventListener('click', () => void refreshAwsSchedule({ force: true }));
 $('#reservationNext').addEventListener('click', () => {
@@ -1864,12 +2193,44 @@ $('#reservationBack').addEventListener('click', (event) => {
     renderReservationDialog();
   }
 });
+$('#favoriteNext').addEventListener('click', () => {
+  if (state.favoriteBusy) return;
+  if (state.favoriteStage === 'select') {
+    if (state.favoriteSelection.size) {
+      state.favoriteStage = 'confirm';
+      renderFavoriteDialog();
+    }
+  } else if (state.favoriteStage === 'confirm') {
+    submitFavoriteBatch();
+  }
+});
+$('#favoriteBack').addEventListener('click', (event) => {
+  if (state.favoriteStage === 'confirm') {
+    event.preventDefault();
+    state.favoriteStage = 'select';
+    renderFavoriteDialog();
+  } else {
+    $('#favoriteDialog').close();
+  }
+});
 $('#googleConnect').addEventListener('click', beginGoogleConnect);
 $('#googleSync').addEventListener('click', openGoogleSyncConfirmation);
 $('#saveGoogleClient').addEventListener('click', saveGoogleClient);
 $('#confirmGoogleSync').addEventListener('click', confirmGoogleSync);
 $('#confirmGoogleRemove').addEventListener('click', confirmGoogleRemove);
 document.addEventListener('change', (event) => {
+  const favoriteId = event.target.dataset?.favoriteSelect;
+  if (favoriteId) {
+    if (event.target.checked && state.favoriteSelection.size >= 10) {
+      event.target.checked = false;
+      return;
+    }
+    state.favoriteSelection = event.target.checked
+      ? new Set([...state.favoriteSelection, favoriteId])
+      : new Set([...state.favoriteSelection].filter((value) => value !== favoriteId));
+    renderFavoriteDialog();
+    return;
+  }
   const reservationId = event.target.dataset?.reservationSelect;
   if (reservationId) {
     if (event.target.checked && state.reservationSelection.size >= 10) {
@@ -2015,6 +2376,7 @@ for (const id of [
   'compareDialog',
   'clearDialog',
   'reservationDialog',
+  'favoriteDialog',
 ])
   $('#' + id).addEventListener('click', (event) => {
     if (event.target === $('#' + id)) {
@@ -2056,6 +2418,10 @@ document.addEventListener('click', (event) => {
     }
     if (d.plan) {
       setPlan(d.plan, !state.plan.includes(d.plan));
+      return;
+    }
+    if (d.favoriteToggle) {
+      void toggleAwsFavorite(d.favoriteToggle);
       return;
     }
     if (d.removePlan) {

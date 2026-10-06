@@ -138,6 +138,40 @@ const english = Object.freeze({
   SESSION_NOT_RESERVABLE: 'A session is not reservable. Refresh the AWS catalog.',
   RESERVATION_OUTCOME_UNKNOWN: 'The outcome is unknown. Check AWS Schedule before retrying.',
   AWSお気に入り: 'AWS favorites',
+  AWSお気に入りに追加: 'Add to AWS favorites',
+  AWSお気に入りから削除: 'Remove from AWS favorites',
+  PlanのAWSセッションをお気に入りに追加: 'Favorite AWS sessions in My Plan',
+  AWSお気に入りに追加するセッションを選択: 'Select sessions to add to AWS favorites',
+  'My Planのセッションからお気に入り登録する対象を選んでください。':
+    'Choose sessions from My Plan to add to AWS favorites.',
+  'お気に入り対象を最大10件選んでください。': 'Select up to 10 sessions to favorite.',
+  AWSお気に入り登録済み: 'Already in AWS favorites',
+  お気に入りに追加予定: 'Will be added to favorites',
+  'お気に入り結果不明 · AWS Scheduleを更新してください':
+    'Favorite outcome unknown · Refresh AWS Schedule',
+  '選択したセッションをAWSお気に入りに登録します。予約は行いません。':
+    'These sessions will be added to AWS favorites. No reservations will be made.',
+  登録対象を確認してください: 'Review the sessions to add.',
+  この内容でAWSへ登録: 'Add these to AWS favorites',
+  'お気に入り登録済み・Scheduleで確認済み': 'Favorited and confirmed in AWS Schedule',
+  '登録結果不明・Scheduleで未確認': 'Outcome unknown; AWS Schedule did not confirm it',
+  'AWS応答成功・Schedule未確認': 'AWS accepted the request; Schedule not confirmed',
+  'AWS Scheduleでお気に入り登録を確認しました。': 'AWS Schedule confirms the favorites.',
+  'AWS Scheduleを再読込できませんでした。結果を確認してください。':
+    'Could not reload AWS Schedule. Check the result.',
+  AWSがお気に入りを受け付けませんでした: 'AWS did not accept this favorite.',
+  AWSお気に入り登録に失敗しました: 'Could not add to AWS favorites.',
+  'AWSお気に入りを更新できませんでした。': 'Could not update AWS favorites.',
+  AWSお気に入りに追加しました: 'Added to AWS favorites',
+  AWSお気に入りから削除しました: 'Removed from AWS favorites',
+  '結果を確認できません。再送せず、AWS Scheduleのお気に入りを確認してください。':
+    'Outcome unknown. Do not retry; check AWS Schedule favorites first.',
+  'AWS応答は成功しましたがScheduleで未確認です。更新して状態を確認してください。':
+    'AWS accepted the request, but Schedule did not confirm it. Refresh and check the state.',
+  PlanにAWSセッションがありません: 'No AWS sessions in My Plan',
+  'AWSセッションをMy Planに追加してください。': 'Add AWS sessions to My Plan first.',
+  'AWSがお気に入りの更新を受け付けていません。時間をおいてください。':
+    'AWS is not accepting favorite changes right now. Try again later.',
   'AWS側でお気に入りにしたセッションが、Scheduleの更新後にここへ表示されます。':
     'Sessions you favorited on AWS appear here after Schedule refresh.',
   AWSお気に入りはありません: 'No AWS favorites',

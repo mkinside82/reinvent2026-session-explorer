@@ -1470,6 +1470,254 @@ async fn aws_reserved_ids(state: &AppState) -> Result<HashSet<String>, &'static 
         .collect()
 }
 
+async fn aws_favorite_ids(state: &AppState) -> Result<HashSet<String>, &'static str> {
+    let url = format!("{API_ROOT}/events/{EVENT_ID}/schedule");
+    let response = api_get(state, &url)
+        .await
+        .map_err(|_| "SCHEDULE_READ_FAILED")?;
+    if !response.status().is_success() {
+        return Err("SCHEDULE_READ_FAILED");
+    }
+    let value = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "AWS_RESPONSE_INVALID")?;
+    let ids = value
+        .pointer("/schedule/favorites")
+        .and_then(Value::as_array)
+        .ok_or("AWS_RESPONSE_INVALID")?;
+    ids.iter()
+        .map(|id| {
+            id.as_str()
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+                .ok_or("AWS_RESPONSE_INVALID")
+        })
+        .collect()
+}
+
+fn valid_favorite_ids(ids: &[String], maximum: usize) -> bool {
+    if ids.is_empty() || ids.len() > maximum {
+        return false;
+    }
+    let mut seen = HashSet::new();
+    !ids.iter()
+        .any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str()))
+}
+
+async fn live_associate_favorites(
+    State(state): State<AppState>,
+    Json(input): Json<ReserveSessionsRequest>,
+) -> Response {
+    if !valid_favorite_ids(&input.session_ids, 10) {
+        return response_error(StatusCode::BAD_REQUEST, "FAVORITE_SESSION_IDS_INVALID");
+    }
+    if state.0.auth.lock().await.account_id.is_none() {
+        return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED");
+    }
+    let session_ids = input.session_ids;
+    let url = format!("{API_ROOT}/events/{EVENT_ID}/favorites");
+    let body = json!({"sessionIds": &session_ids});
+    let mut refreshed = false;
+    let response = loop {
+        let access = match load_access_token(&state, refreshed).await {
+            Ok(value) => value,
+            Err(_) => return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
+        };
+        match state
+            .0
+            .client
+            .post(&url)
+            .bearer_auth(access)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => {
+                refreshed = true;
+                continue;
+            }
+            Ok(response) => break Some(response),
+            Err(_) => break None,
+        }
+    };
+    let (mut successful, mut failed, mut unknown) = match response {
+        None => (
+            Vec::<String>::new(),
+            Vec::<Value>::new(),
+            session_ids.clone(),
+        ),
+        Some(response) if response.status().as_u16() == 200 => {
+            let value = match response.json::<Value>().await {
+                Ok(value) => value,
+                Err(_) => json!({}),
+            };
+            let result = value.get("result");
+            let successes = result
+                .and_then(|v| v.get("successful"))
+                .and_then(Value::as_array);
+            let failures = result
+                .and_then(|v| v.get("failed"))
+                .and_then(Value::as_array);
+            match (successes, failures) {
+                (Some(successes), Some(failures)) => {
+                    let submitted: HashSet<&str> = session_ids.iter().map(String::as_str).collect();
+                    let mut seen = HashSet::new();
+                    let mut good = Vec::new();
+                    let mut bad = Vec::new();
+                    let mut valid = true;
+                    for id in successes {
+                        match id.as_str() {
+                            Some(id) if submitted.contains(id) && seen.insert(id.to_owned()) => {
+                                good.push(id.to_owned())
+                            }
+                            _ => valid = false,
+                        }
+                    }
+                    for failure in failures {
+                        let Some(id) = failure.get("sessionId").and_then(Value::as_str) else {
+                            valid = false;
+                            continue;
+                        };
+                        if !submitted.contains(id)
+                            || !seen.insert(id.to_owned())
+                            || failure.get("code").and_then(Value::as_str).is_none()
+                        {
+                            valid = false;
+                            continue;
+                        }
+                        bad.push(failure.clone());
+                    }
+                    if !valid || seen.len() != submitted.len() {
+                        (Vec::new(), Vec::new(), session_ids.clone())
+                    } else {
+                        (good, bad, Vec::new())
+                    }
+                }
+                _ => (Vec::new(), Vec::new(), session_ids.clone()),
+            }
+        }
+        Some(response) => {
+            let status = response.status();
+            if status.is_server_error() {
+                (Vec::new(), Vec::new(), session_ids.clone())
+            } else {
+                let (status, code) = match status.as_u16() {
+                    401 => (StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
+                    403 => (StatusCode::FORBIDDEN, "EVENT_REGISTRATION_REQUIRED"),
+                    409 => (StatusCode::CONFLICT, "FAVORITES_CLOSED"),
+                    429 => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
+                    _ => (StatusCode::BAD_GATEWAY, "FAVORITE_REQUEST_REJECTED"),
+                };
+                return response_error(status, code);
+            }
+        }
+    };
+    let mut schedule_confirmed = false;
+    if let Ok(current) = aws_favorite_ids(&state).await {
+        schedule_confirmed = true;
+        for id in &session_ids {
+            if current.contains(id) {
+                if !successful.contains(id) {
+                    successful.push(id.to_owned());
+                }
+                failed.retain(|row| {
+                    row.get("sessionId").and_then(Value::as_str) != Some(id.as_str())
+                });
+                unknown.retain(|value| value != id);
+            } else if successful.contains(id) && !unknown.contains(id) {
+                successful.retain(|value| value != id);
+                unknown.push(id.to_owned());
+            }
+        }
+    }
+    Json(json!({"successful":successful,"failed":failed,"unknown":unknown,"scheduleConfirmed":schedule_confirmed})).into_response()
+}
+
+async fn live_remove_favorite(
+    State(state): State<AppState>,
+    Json(input): Json<ReserveSessionsRequest>,
+) -> Response {
+    if !valid_favorite_ids(&input.session_ids, 1) {
+        return response_error(StatusCode::BAD_REQUEST, "FAVORITE_SESSION_IDS_INVALID");
+    }
+    if state.0.auth.lock().await.account_id.is_none() {
+        return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED");
+    }
+    let session_id = &input.session_ids[0];
+    let mut url = url::Url::parse(&format!("{API_ROOT}/events/{EVENT_ID}/favorites/"))
+        .expect("constant API URL");
+    url.path_segments_mut()
+        .expect("API URL has path segments")
+        .pop_if_empty()
+        .push(session_id);
+    let url = url.to_string();
+    let mut refreshed = false;
+    let response = loop {
+        let access = match load_access_token(&state, refreshed).await {
+            Ok(value) => value,
+            Err(_) => return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
+        };
+        match state.0.client.delete(&url).bearer_auth(access).send().await {
+            Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => {
+                refreshed = true;
+                continue;
+            }
+            Ok(response) => break Some(response),
+            Err(_) => break None,
+        }
+    };
+    let mut removed = Vec::new();
+    let mut failed = Vec::<Value>::new();
+    let mut unknown = Vec::new();
+    match response {
+        None => unknown.push(session_id.to_owned()),
+        Some(response) if response.status().is_success() || response.status().as_u16() == 404 => {
+            removed.push(session_id.to_owned());
+        }
+        Some(response) if response.status().is_server_error() => {
+            unknown.push(session_id.to_owned());
+        }
+        Some(response) => {
+            let status = response.status();
+            let code = match status.as_u16() {
+                401 => "SIGN_IN_REQUIRED",
+                403 => "EVENT_REGISTRATION_REQUIRED",
+                409 => "FAVORITES_CLOSED",
+                429 => "RATE_LIMITED",
+                _ => "FAVORITE_REMOVE_FAILED",
+            };
+            return response_error(
+                match status.as_u16() {
+                    401 => StatusCode::UNAUTHORIZED,
+                    403 => StatusCode::FORBIDDEN,
+                    409 => StatusCode::CONFLICT,
+                    429 => StatusCode::TOO_MANY_REQUESTS,
+                    _ => StatusCode::BAD_GATEWAY,
+                },
+                code,
+            );
+        }
+    }
+    let mut schedule_confirmed = false;
+    if let Ok(current) = aws_favorite_ids(&state).await {
+        schedule_confirmed = true;
+        if !current.contains(session_id) {
+            if !removed.contains(session_id) {
+                removed.push(session_id.to_owned());
+            }
+            failed.retain(|row| {
+                row.get("sessionId").and_then(Value::as_str) != Some(session_id.as_str())
+            });
+            unknown.retain(|value| value != session_id);
+        } else if removed.contains(session_id) {
+            removed.retain(|value| value != session_id);
+            unknown.push(session_id.to_owned());
+        }
+    }
+    Json(json!({"removed":removed,"failed":failed,"unknown":unknown,"scheduleConfirmed":schedule_confirmed})).into_response()
+}
+
 async fn live_reserve_sessions(
     State(state): State<AppState>,
     Json(input): Json<ReserveSessionsRequest>,
@@ -2431,6 +2679,8 @@ async fn main() {
         .route("/api/live/catalog", get(live_catalog))
         .route("/api/live/catalog/refresh", post(live_catalog_refresh))
         .route("/api/live/schedule", get(live_schedule))
+        .route("/api/live/favorites", post(live_associate_favorites))
+        .route("/api/live/favorites/remove", post(live_remove_favorite))
         .route("/api/live/recommendation-news", get(recommendation_news))
         .route("/api/live/personal-time", post(live_personal_time))
         .route("/api/live/reservations", post(live_reserve_sessions))

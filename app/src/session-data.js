@@ -387,6 +387,12 @@ export async function fetchRecommendationNews() {
 export async function reserveLiveSessions(sessionIds) {
   return apiRequest('/api/live/reservations', { method: 'POST', body: { sessionIds } });
 }
+export async function associateLiveFavorites(sessionIds) {
+  return apiRequest('/api/live/favorites', { method: 'POST', body: { sessionIds } });
+}
+export async function removeLiveFavorites(sessionIds) {
+  return apiRequest('/api/live/favorites/remove', { method: 'POST', body: { sessionIds } });
+}
 export async function cancelLiveReservations(sessionIds) {
   return apiRequest('/api/live/reservations/cancel', { method: 'POST', body: { sessionIds } });
 }

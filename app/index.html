@@ -152,7 +152,9 @@
               aria-live="polite"
               hidden
             ></p>
-            <button id="reservePlanned" class="primary reserve-planned" hidden>
+            <button id="favoritePlanned" class="quiet small" hidden>
+              PlanのAWSセッションをお気に入りに追加</button
+            ><button id="reservePlanned" class="primary reserve-planned" hidden>
               選択してAWSへ予約</button
             ><button id="manageReservations" class="quiet small" hidden>予約を管理・解除</button
             ><button id="addPersonalTime" class="quiet small" hidden>AWS個人予定を追加</button
@@ -264,6 +266,19 @@
       <div class="confirmation-actions">
         <button id="reservationBack" class="quiet" data-close="reservationDialog">閉じる</button
         ><button id="reservationNext" class="primary">選択内容を確認</button>
+      </div>
+    </dialog>
+    <dialog
+      id="favoriteDialog"
+      class="confirmation reservation-dialog"
+      aria-labelledby="favoriteHeading"
+    >
+      <h2 id="favoriteHeading">AWSお気に入りに追加するセッションを選択</h2>
+      <p id="favoriteIntro">My Planのセッションからお気に入り登録する対象を選んでください。</p>
+      <div id="favoriteBody"></div>
+      <div class="confirmation-actions">
+        <button id="favoriteBack" class="quiet">閉じる</button>
+        <button id="favoriteNext" class="primary">選択内容を確認</button>
       </div>
     </dialog>
     <dialog id="personalTimeDialog" class="confirmation" aria-labelledby="personalTimeHeading">
