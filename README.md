@@ -52,7 +52,7 @@ npm run demo
 - 日本語 / EnglishのUI切替
 - 1回限りのICS書き出し
 - オプトインGoogle Calendar連携。専用カレンダーに選択したPlan項目を追加・更新・削除
-- ローカルstdio MCPサーバー（セッション検索、AWS Schedule読取、重複確認、Builder IDサインイン開始）
+- ローカルstdio MCPサーバー（セッション検索、AWS Schedule読取、重複確認、空き時間に合う候補、Builder IDサインイン開始）
 - 対応ブラウザーでは、ページを開いている間だけ利用できるWebMCP試作（My Plan読取・編集など）
 
 Google Calendar同期はAWS予約との同期ではありません。詳細な設定方法は[アプリガイド（日本語）](app/README.ja.md)を参照してください。
@@ -70,7 +70,7 @@ LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サ�
 - [予約取消（CancelReservation）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-cancelreservation.html)
 - [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
 
-このアプリのLive接続はREST APIを直接呼び出します。`./app/reinvent-explorer mcp`で起動するローカルstdio MCPサーバーは、ブラウザー画面を開かずにセッション検索・AWS Schedule読取・時間重複確認を提供します。MCPサーバーはLiveローカルサーバーとAWSへのサインイン状態を利用します。ブラウザー内WebMCPは別機能で、このタブを開いている間だけMy Plan操作を公開します。AWS公式Events MCPサーバーともそれぞれ別の機能です。
+このアプリのLive接続はREST APIを直接呼び出します。`./app/reinvent-explorer mcp`で起動するローカルstdio MCPサーバーは、セッション検索・AWS Schedule読取・時間重複確認に加え、指定日の空き時間に収まる候補を関心分野・注目テーマ・空席情報で並べます。提案はAWS Scheduleの予約と個人予定を使い、Google Calendarやブラウザー内ローカル候補は読みません。ChatGPT Webなどリモート接続型クライアントから使うにはSecure MCP Tunnelなど別の接続設定が必要です。ブラウザー内WebMCPは別機能で、このタブを開いている間だけMy Plan操作を公開します。AWS公式Events MCPサーバーともそれぞれ別の機能です。
 
 ## DemoとLive
 
@@ -91,7 +91,7 @@ LiveモードとGoogle Calendarの設定手順は[アプリガイド（日本語
 
 - AWS一括予約はLiveモードで明示確認後に最大10件を送信し、Schedule再読込と個別結果表示を行います。既存予約の解除も可能ですが、AWS Scheduleに載っている項目だけが対象で、取消APIは1件ずつ呼び出します。予約済み項目はMy Planに取り込み表示しますが、AWS予約とローカル候補の状態は別管理です。
 - Google Calendarの実アカウント接続とAPI書き込みは、この環境では未検証です。ユーザー自身のOAuth設定が必要です。
-- ローカルstdio MCPサーバーは検索・Schedule読取・重複確認のみを提供し、予約や取消はできません。MCPクライアントごとにローカルstdio接続の対応状況が異なります。リモート接続型MCPクライアントには[AWS公式Events MCP](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)を利用できます。
+- MCPは読み取り専用で、セッション検索・Schedule読取・重複確認・空き時間提案を提供し、予約や取消はできません。ローカルstdio接続に対応したクライアントで利用できます。ChatGPT Webなどから使う場合は、Secure MCP Tunnel等の別途セットアップが必要です。
 - Side eventsは出典を確認できたものだけを掲載します。時刻や申込条件が公式に確認できない場合は未確認のまま表示します。
 
 ## ライセンス

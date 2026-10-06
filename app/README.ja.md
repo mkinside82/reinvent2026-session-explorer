@@ -38,7 +38,11 @@ Liveモードでは参加者本人のAWS Eventsカタログを読み込みます
 
 ### AIクライアント用ローカルMCP
 
-`./reinvent-explorer mcp`はstdio MCPサーバーを起動し、必要ならLiveローカルサーバーも開始します。ブラウザー画面を開かずにセッション検索、AWS Schedule読取、時間重複確認を使えます。未サインインなら`begin_aws_sign_in`が認証URLを返します。予約・取消・個人予定の変更ツールは公開していません。MCPクライアントの設定でcommandにこのリポジトリの`app/reinvent-explorer`、argsに`mcp`を指定してください。ローカルstdio接続に対応するクライアントが必要です。Web ChatGPTなどリモートMCPのみの環境には接続されません。ブラウザー内WebMCPはMy Planを扱う別機能です。
+`./reinvent-explorer mcp`はstdio MCPサーバーを起動し、必要ならLiveローカルサーバーも開始します。セッション検索、AWS Schedule読取、時間重複確認に加え、`recommend_sessions_for_gaps`で指定日の空き時間に収まる候補を関心分野・注目テーマ・AWSの空席情報で並べられます。時刻は会場現地時間（ラスベガス）です。候補はAWSの予約済みセッションと個人予定から計算し、カタログが未取得・未完了の場合や予約の時刻を特定できない場合は警告を返します。Google Calendarやブラウザー内だけのローカル候補は読みません。提案・検索・Schedule読取はいずれも読み取り専用で、予約・取消・個人予定の変更ツールは公開していません。
+
+例: `recommend_sessions_for_gaps`に`date: "2026-12-01"`と`interests: ["ai", "genai"]`を渡すと、その日の08:00–20:00（会場現地時間）を既定の範囲として候補を返します。`dayStart` / `dayEnd`で範囲、`perSlotLimit`で空き枠ごとの候補数を指定できます。関心分野IDは`ai`, `genai`, `architecture`, `serverless`, `containers`, `security`, `database`, `saas`, `developer-tools`です。
+
+ローカルMCPクライアントではcommandにこのリポジトリの`app/reinvent-explorer`、argsに`mcp`を指定してください。ChatGPT WebなどリモートMCPクライアントから使う場合は、stdioサーバーと別にSecure MCP Tunnelなどの接続設定が必要です。このリポジトリにはトンネルの認証情報や利用者固有設定を含めていません。未サインインなら`begin_aws_sign_in`が認証URLを返します。サインインのコールバックを受けるLiveサーバーが動作するMac上でURLを開いてください。ブラウザー内WebMCPはMy Planを扱う別機能です。
 
 ## Google Calendar（任意）
 

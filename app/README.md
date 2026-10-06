@@ -38,7 +38,11 @@ Live reads the attendee's AWS Events catalog. At startup it reads reserved sessi
 
 ### Local MCP for AI clients
 
-Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the Live companion server if needed. MCP tools can search sessions, read the signed-in attendee's AWS Schedule, and check requested session IDs for conflicts. If signed out, `begin_aws_sign_in` returns a URL for the user to open. No reservation, cancellation, or personal-time write tools are exposed. Configure your MCP client with the absolute path to `app/reinvent-explorer` as `command` and `mcp` as its argument. The client must support local stdio MCP. Remote-only MCP clients are not connected by this local server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
+Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the Live companion server if needed. In addition to session search, AWS Schedule reads, and conflict checks, `recommend_sessions_for_gaps` ranks sessions that fit into a specified day's free time by interest, current themes, and AWS seat availability. Times use the Las Vegas venue time zone. Gaps are calculated from AWS reservations and personal-time blocks. The tool reports incomplete catalog coverage and reservations whose times could not be resolved. It does not read Google Calendar or browser-only local picks. All tools remain read-only; no reservation, cancellation, or personal-time write tools are exposed.
+
+Example: call `recommend_sessions_for_gaps` with `date: "2026-12-01"` and `interests: ["ai", "genai"]` to rank candidates between 08:00 and 20:00 venue time. Override `dayStart` / `dayEnd` for another window and `perSlotLimit` for the number of suggestions per gap. Interest IDs: `ai`, `genai`, `architecture`, `serverless`, `containers`, `security`, `database`, `saas`, `developer-tools`.
+
+For a local MCP client, configure the absolute path to `app/reinvent-explorer` as `command` and `mcp` as its argument. Remote clients such as ChatGPT Web need a separate connection setup, such as Secure MCP Tunnel; tunnel credentials and user-specific configuration are not included in this repository. If signed out, `begin_aws_sign_in` returns a URL to open on the Mac running the Live callback server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
 
 ## Google Calendar (optional)
 
