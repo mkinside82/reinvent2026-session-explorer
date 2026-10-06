@@ -28,8 +28,8 @@ test('multi facets OR within each dimension, AND across dimensions; service and 
   assert(!found.some((s) => s.id === 'SEC011'));
   assert.deepEqual(
     filterSessions(data, { venue: ['Room 101'] }).map((s) => s.id),
-    ['SEC001'],
-    'location facet includes room names as well as venue names',
+    [],
+    'location filter does not include room names',
   );
   assert.deepEqual(
     filterSessions(data, { venue: ['Demo venue A'] })

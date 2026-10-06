@@ -137,8 +137,7 @@ function matches(s, filters) {
     if (values.length && !values.includes(s[key])) return false;
   }
   const locations = selections(filters.venue);
-  if (locations.length && !locations.some((value) => [s.venue, s.room].includes(value)))
-    return false;
+  if (locations.length && !locations.includes(s.venue)) return false;
   const floor = Number(filters.minLevel);
   if (
     Number.isFinite(floor) &&
