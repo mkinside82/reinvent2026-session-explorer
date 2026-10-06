@@ -13,10 +13,15 @@ export const TREND_SIGNALS=Object.freeze([
    reason:'AWS公式の今年のSecurity Focusはagentic securityを含み、ガバナンス・ID・認可・安全策を扱うと案内しています。AIを作るだけでなく、制御方法を学べる候補です。',
    terms:['agent','security','identity','governance','authorization','安全'],
    sources:[{label:'AWS re:Invent 2026 · Security Focus',url:'https://aws.amazon.com/events/reinvent/sessions/security-focus/'},{label:'AWS re:Invent 2026 · Curated Agendas',url:'https://aws.amazon.com/events/reinvent/sessions/curated-agendas/'}],
-   verifiedAt:'2026-10-05',expiresAt:'2026-10-19'}
+   verifiedAt:'2026-10-05',expiresAt:'2026-10-19'},
+  {id:'hands-on-learning',title:'実際に手を動かして学ぶ',
+   reason:'AWS re:Invent 2026は2,200以上のセッションを掲載し、その70%をインタラクティブ形式と案内しています。講演を聞くだけでなく、WorkshopやBuilders’ sessionなど手を動かせる形式を優先しました。',
+   terms:['workshop','builders','chalk talk','hands-on','interactive'],
+   sources:[{label:'AWS re:Invent 2026 · Session Types & Learning Formats',url:'https://aws.amazon.com/events/reinvent/sessions/how-youll-learn/'},{label:'AWS re:Invent 2026 · Session Catalog',url:'https://catalog.awsevents.com/'}],
+   verifiedAt:'2026-10-06',expiresAt:'2026-12-05'}
 ]);
 
-const corpus=s=>[s.title,s.abstract,s.code,s.track,...(s.tracks||[]),...(s.topics||[]),...(s.services||[]),...(s.keywords||[])].join(' ').normalize('NFKC').toLocaleLowerCase();
+const corpus=s=>[s.title,s.abstract,s.code,s.track,s.sessionType,...(s.tracks||[]),...(s.topics||[]),...(s.services||[]),...(s.keywords||[])].join(' ').normalize('NFKC').toLocaleLowerCase();
 const expired=(date,today)=>!date||date<today;
 const timeMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');return match?Number(match[1])*60+Number(match[2]):null;};
 function fitsPlan(item,plan){const start=timeMinutes(item.startTime),end=timeMinutes(item.endTime);if(!item.date||start===null||end===null)return null;return !plan.some(existing=>{if(existing.date!==item.date)return false;const otherStart=timeMinutes(existing.startTime),otherEnd=timeMinutes(existing.endTime);return otherStart!==null&&otherEnd!==null&&start<otherEnd&&otherStart<end;});}
