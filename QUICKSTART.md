@@ -26,6 +26,20 @@ AIがターミナルを使えない場合は、上の3コマンドをターミ�
 
 AWS接続ではmacOSのRustサーバーがAWS Events APIへ接続します。利用者が実データの利用を希望したときだけ、AIから起動を提案・実行します。
 
+Rust/Cargoが未導入なら、公式の[rustupインストールガイド](https://rust-lang.org/install.html)に従ってください。macOSでは次のコマンドでRustとCargoをまとめて導入できます。
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+インストール後にターミナルを開き直し、`rustc --version`と`cargo --version`で確認します。初回ビルドでリンカーまたはCコンパイラーのエラーが出た場合は、Xcode Command Line Toolsを追加します。
+
+```sh
+xcode-select --install
+```
+
+詳細は[READMEのAWS接続セクション](README.md#aws接続実データ)を参照してください。
+
 ```sh
 ./app/reinvent-explorer start
 ```

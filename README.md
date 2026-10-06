@@ -10,7 +10,19 @@ AWS re:Invent 2026のセッションを検索し、会場現地時刻で1日の�
 
 ### AWS接続（実データ）
 
-AWSの実カタログを使うにはmacOS、Rust、Cargoが必要です。リポジトリのルートで次を実行します。
+AWSの実カタログを使うにはmacOS、Rust、Cargoが必要です。Rustが未導入なら、[Rust公式のインストール案内](https://rust-lang.org/install.html)に従ってrustupを導入してください。rustupはRustとCargoをまとめてインストールします。macOSのターミナルでは次の方法も使えます。
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+インストール後にターミナルを開き直し、`rustc --version`と`cargo --version`で確認します。初回ビルドでリンカーやCコンパイラーが見つからない場合は、Xcode Command Line Toolsを追加します。
+
+```sh
+xcode-select --install
+```
+
+準備できたら、リポジトリのルートで次を実行します。
 
 ```sh
 ./app/reinvent-explorer start

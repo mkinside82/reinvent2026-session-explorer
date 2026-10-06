@@ -19,7 +19,19 @@ Open the loopback URL printed in the terminal and stop the server with `Ctrl-C`.
 
 ### AWS-connected app (real data)
 
-The AWS-connected app requires macOS, Rust, and Cargo:
+The AWS-connected app requires macOS, Rust, and Cargo. If Rust is not installed, follow the [official Rust installation guide](https://rust-lang.org/install.html) to install rustup. rustup installs Rust and Cargo together. On macOS, you can also run:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Restart the terminal after installation and verify with `rustc --version` and `cargo --version`. If the first build reports a missing linker or C compiler, install Xcode Command Line Tools:
+
+```sh
+xcode-select --install
+```
+
+Then start the app:
 
 ```sh
 ./reinvent-explorer start
