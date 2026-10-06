@@ -50,7 +50,7 @@ function renderExplore(map){
  else if(sideMode&&!found.length)$('#cards').innerHTML=blank(t('一致するイベントがありません'),t('キーワードやFilterを少し減らしてお試しください。'),t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'));
  else if(sideMode){const subset=found.slice(0,displayLimit);$('#cards').innerHTML=(state.view==='compact'?renderCompact(subset,plan,map,state.compare):subset.map(s=>renderCard(s,plan,map,state.compare)).join(''))+(found.length>displayLimit?ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length-displayLimit}件）</button>`:'');}
  else if(state.status==='loading')$('#cards').innerHTML='<div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div>';
- else if(state.status==='unauthenticated')$('#cards').innerHTML=blank(t('AWS Builder IDでサインインしてください'),t('AWSのliveカタログを読むには、イベント登録済みのアカウントが必要です。'),'<button data-action="signIn" class="primary">Builder ID sign-in</button>');
+ else if(state.status==='unauthenticated')$('#cards').innerHTML=blank(t('AWS Builder IDでサインインしてください'),t('AWSの実カタログを読むには、イベント登録済みのアカウントが必要です。'),'<button data-action="signIn" class="primary">Builder ID sign-in</button>');
  else if(state.status==='error')$('#cards').innerHTML=blank(t('セッションを取得できませんでした'),t('通信状態を確認して、もう一度お試しください。'),t('<button data-action="retry" class="primary">再試行</button>'));
  else if(!state.sessions.length)$('#cards').innerHTML=blank(state.source==='live'?t('AWSカタログを取得しています'):t('セッションデータがまだありません'),state.source==='live'?t('最初のページを受信すると、続きの取得中も結果を表示します。'):t('データが公開されると、ここに表示されます。'),t('<button data-action="retry" class="quiet">再読み込み</button>'));
  else if(!found.length)$('#cards').innerHTML=favoriteMode?blank(t('AWSお気に入りはありません'),t('AWS側でお気に入りにしたセッションが、Scheduleの更新後にここへ表示されます。')):blank(t('一致するセッションがありません'),t('キーワードやFilterを少し減らしてお試しください。'),t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'));
@@ -93,15 +93,15 @@ function renderSourceInfo(){
  const live=state.source==='live';
  $('#sourceControls').hidden=false;
  $('#sourceBadge').hidden=live;
- $('#sourceBadge').textContent=live?'LIVE':'DEMO';
+ $('#sourceBadge').textContent=t(live?'AWS接続':'プレビュー');
  $('#sourceBadge').classList.toggle('live-badge',live);
  $('#demoMode').hidden=true;$('#liveMode').hidden=true;
  $('#signIn').hidden=!live||!state.localApiAvailable||!!state.accountId;
  $('#refreshLive').hidden=!live||!state.localApiAvailable||!state.accountId;
  $('#signOut').hidden=!live||!state.localApiAvailable||!state.accountId;
  $('#sourceDescription').textContent=live
-  ?state.localApiAvailable?t('AWS Events API · re:Invent 2026 · AWS予約をMy Planに同期。候補はアカウント別にローカル保存します。'):t('Liveサーバーに接続できません。アプリを再起動してください。')
-  :t('デモデータ · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。');
+  ?state.localApiAvailable?t('AWS Events API · re:Invent 2026 · AWS予約をMy Planに同期。候補はアカウント別にローカル保存します。'):t('AWS接続用サーバーに接続できません。アプリを再起動してください。')
+  :t('プレビュー（サンプルデータ） · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。');
  $('#timeContext').textContent=live?t('AWSのtimezoneがある場合はLas Vegasへ変換し、欠落時はAPI記載の時刻をそのまま表示します。'):t('時刻：会場現地時間（Las Vegas）');
  const meta=state.catalogMeta;let note='';
  if(live&&meta){if(meta.refreshing)note=ui`AWS catalog取得中 · ${meta.pages}ページ受信${meta.totalCount===null?'':ui` · totalCount ${meta.totalCount}`}`;else if(meta.error)note=ui`最新取得に失敗しました（${meta.error}）。表示中のcacheは保持しています。`;else if(meta.complete)note=ui`${meta.pages}ページを取得 · 更新 ${meta.fetchedAt?new Date(meta.fetchedAt*1000).toLocaleString(getLocale()): t('時刻不明')}${meta.totalCount===null?'':ui` · totalCount ${meta.totalCount}`}`;else if(meta.fetchedAt)note=ui`未完了のcache · ${meta.pages}ページ取得済み · 続きの取得を再試行できます。`;}
