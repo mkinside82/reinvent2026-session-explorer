@@ -1,0 +1,31 @@
+# Local credentials and private configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+secrets/
+private/
+
+# Local/runtime state
+.DS_Store
+*.log
+*.pid
+*.sock
+*.tmp
+.reinvent-explorer/
+
+# Generated build output and Rust artifacts
+app/dist/
+app/server/target/
+app/qa/
+
+# Import provenance metadata may contain private hosting project identifiers
+SOURCE-MANIFEST.json
+
+# Editor state
+.idea/
+.vscode/

@@ -1,0 +1,85 @@
+#!/bin/zsh
+setopt NO_BG_NICE
+set -eu
+
+APP_DIR="${0:A:h}"
+STATE_DIR="${TMPDIR:-/tmp}/reinvent-session-explorer"
+PID_FILE="$STATE_DIR/server.pid"
+LOG_FILE="$STATE_DIR/server.log"
+BIN="$APP_DIR/server/target/release/reinvent-session-explorer"
+
+server_pid() {
+  [[ -f "$PID_FILE" ]] || return 1
+  local pid
+  pid="$(<"$PID_FILE")"
+  [[ "$pid" == <-> ]] || return 1
+  ps -p "$pid" -o command= 2>/dev/null | grep -Fq "$BIN" || return 1
+  print -r -- "$pid"
+}
+
+case "${1:-help}" in
+  start)
+    mkdir -p "$STATE_DIR"
+    if pid="$(server_pid)"; then
+      print -r -- "Session Explorer is already running (pid $pid)."
+      cat "$LOG_FILE" 2>/dev/null | grep '^READY ' | tail -n 1 || true
+      exit 0
+    fi
+    if ! command -v cargo >/dev/null; then
+      print -u2 "Rust is required. Install it with: brew install rust"
+      exit 1
+    fi
+    (cd "$APP_DIR/server" && cargo build --release)
+    nohup env REINVENT_APP_DIR="$APP_DIR" "$BIN" >"$LOG_FILE" 2>&1 </dev/null &
+    pid=$!
+    disown "$pid" 2>/dev/null || true
+    print -r -- "$pid" >"$PID_FILE"
+    for _ in {1..50}; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        cat "$LOG_FILE"
+        rm -f "$PID_FILE"
+        exit 1
+      fi
+      if grep -q '^READY ' "$LOG_FILE" 2>/dev/null; then
+        grep '^READY ' "$LOG_FILE" | tail -n 1
+        print -r -- "Stop with: $0 stop"
+        exit 0
+      fi
+      sleep 0.2
+    done
+    print -u2 "The server did not become ready. Diagnostics: $0 diagnostics"
+    exit 1
+    ;;
+  stop)
+    if pid="$(server_pid)"; then
+      kill -TERM "$pid"
+      rm -f "$PID_FILE"
+      print -r -- "Stopped Session Explorer (pid $pid)."
+    else
+      rm -f "$PID_FILE"
+      print -r -- "Session Explorer is not running."
+    fi
+    ;;
+  status)
+    if pid="$(server_pid)"; then
+      print -r -- "Session Explorer is running (pid $pid)."
+      grep '^READY ' "$LOG_FILE" 2>/dev/null | tail -n 1 || true
+    else
+      print -r -- "Session Explorer is stopped."
+      exit 1
+    fi
+    ;;
+  diagnostics)
+    print -r -- "macOS: $(sw_vers -productVersion 2>/dev/null || print unknown)"
+    print -r -- "Node: $(node --version 2>/dev/null || print not-installed)"
+    print -r -- "Rust: $(rustc --version 2>/dev/null || print not-installed)"
+    print -r -- "Cargo: $(cargo --version 2>/dev/null || print not-installed)"
+    "$0" status || true
+    if command -v lsof >/dev/null; then
+      lsof -nP -iTCP:8484-8489 -sTCP:LISTEN 2>/dev/null || true
+    fi
+    ;;
+  help|*)
+    print -r -- "Usage: $0 {start|stop|status|diagnostics}"
+    ;;
+esac

@@ -1,0 +1,592 @@
+[
+  {
+    "id": "SEC001",
+    "code": "AIM301",
+    "title": "Building reliable agentic applications on AWS",
+    "abstract": "Demo data for the MVP. Learn patterns for production-grade agent systems, observability, evaluation, and safe orchestration.",
+    "date": "2026-12-01",
+    "start": "10:00",
+    "end": "11:00",
+    "track": "AI / ML",
+    "level": "300",
+    "type": "Breakout session",
+    "venue": "Demo venue A",
+    "room": "Room 101",
+    "speakers": [
+      "Demo Speaker A"
+    ],
+    "topics": [
+      "Agents",
+      "Observability",
+      "Architecture"
+    ],
+    "services": [
+      "Amazon Bedrock",
+      "Amazon SageMaker"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC002",
+    "code": "DVT204",
+    "title": "Accelerating software delivery with AI agents",
+    "abstract": "Demo data for the MVP. Explore how AI-assisted delivery can improve planning, coding, testing, and release workflows.",
+    "date": "2026-12-01",
+    "start": "10:30",
+    "end": "11:30",
+    "track": "Developer Tools",
+    "level": "200",
+    "type": "Breakout session",
+    "venue": "Demo venue B",
+    "room": "Room 202",
+    "speakers": [
+      "Demo Speaker B"
+    ],
+    "topics": [
+      "AI Delivery",
+      "CI/CD",
+      "Developer Experience"
+    ],
+    "services": [
+      "AWS CodeBuild",
+      "Amazon Q Developer"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC003",
+    "code": "SAS302",
+    "title": "Designing resilient multi-tenant SaaS platforms",
+    "abstract": "Demo data for the MVP. Patterns for isolation, authorization, observability, and resilient SaaS architecture.",
+    "date": "2026-12-01",
+    "start": "13:00",
+    "end": "14:00",
+    "track": "SaaS",
+    "level": "300",
+    "type": "Breakout session",
+    "venue": "Demo venue C",
+    "room": "Room 303",
+    "speakers": [
+      "Demo Speaker C"
+    ],
+    "topics": [
+      "SaaS",
+      "Architecture",
+      "Security"
+    ],
+    "services": [
+      "Amazon Cognito",
+      "Amazon EventBridge"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "full",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC004",
+    "code": "OBS401",
+    "title": "Observability strategies for distributed systems",
+    "abstract": "Demo data for the MVP. Advanced approaches to telemetry, SLOs, tracing, and incident response.",
+    "date": "2026-12-02",
+    "start": "09:00",
+    "end": "10:00",
+    "track": "Operations",
+    "level": "400",
+    "type": "Chalk talk",
+    "venue": "Demo venue D",
+    "room": "Room 404",
+    "speakers": [
+      "Demo Speaker D"
+    ],
+    "topics": [
+      "Observability",
+      "Reliability",
+      "SRE"
+    ],
+    "services": [
+      "Amazon CloudWatch"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "reserved"
+    }
+  },
+  {
+    "id": "SEC005",
+    "code": "SEC305",
+    "title": "Authorization patterns for modern SaaS",
+    "abstract": "Demo data for the MVP. Practical authorization and policy enforcement patterns for modern SaaS systems.",
+    "date": "2026-12-02",
+    "start": "11:00",
+    "end": "12:00",
+    "track": "Security",
+    "level": "300",
+    "type": "Breakout session",
+    "venue": "Demo venue E",
+    "room": "Room 505",
+    "speakers": [
+      "Demo Speaker E"
+    ],
+    "topics": [
+      "RBAC",
+      "Authorization",
+      "Security"
+    ],
+    "services": [
+      "AWS IAM",
+      "Amazon Verified Permissions"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC006",
+    "code": "DAT201",
+    "title": "Choosing the right database for your workload",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for databases, architecture.",
+    "date": "2026-12-01",
+    "startTime": "09:00",
+    "endTime": "10:00",
+    "sessionType": "Breakout session",
+    "track": "Databases",
+    "topics": [
+      "Databases",
+      "Architecture"
+    ],
+    "level": "200",
+    "venue": "Demo venue A",
+    "room": "Demo Room 100",
+    "speakers": [
+      "Demo Speaker A"
+    ],
+    "services": [
+      "Amazon Aurora",
+      "Amazon DynamoDB"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC007",
+    "code": "AIM202",
+    "title": "Evaluating generative AI applications",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for evaluation, generative ai.",
+    "date": "2026-12-01",
+    "startTime": "11:00",
+    "endTime": "12:00",
+    "sessionType": "Chalk talk",
+    "track": "AI / ML",
+    "topics": [
+      "Evaluation",
+      "Generative AI"
+    ],
+    "level": "200",
+    "venue": "Demo venue B",
+    "room": "Demo Room 101",
+    "speakers": [
+      "Demo Speaker B"
+    ],
+    "services": [
+      "Amazon Bedrock",
+      "Amazon SageMaker"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "full",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC008",
+    "code": "DVT301",
+    "title": "Hands-on delivery pipelines with infrastructure as code",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for ci/cd, terraform.",
+    "date": "2026-12-01",
+    "startTime": "14:00",
+    "endTime": "16:00",
+    "sessionType": "Workshop",
+    "track": "Developer Tools",
+    "topics": [
+      "CI/CD",
+      "Terraform"
+    ],
+    "level": "300",
+    "venue": "Demo venue C",
+    "room": "Demo Room 102",
+    "speakers": [
+      "Demo Speaker C"
+    ],
+    "services": [
+      "AWS CodeBuild",
+      "Amazon Q Developer"
+    ],
+    "keywords": [
+      "hands-on",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC009",
+    "code": "SEC201",
+    "title": "Identity foundations for cloud applications",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for identity, security.",
+    "date": "2026-12-01",
+    "startTime": "13:30",
+    "endTime": "14:30",
+    "sessionType": "Breakout session",
+    "track": "Security",
+    "topics": [
+      "Identity",
+      "Security"
+    ],
+    "level": "200",
+    "venue": "Demo venue D",
+    "room": "Demo Room 103",
+    "speakers": [
+      "Demo Speaker D"
+    ],
+    "services": [
+      "AWS IAM",
+      "Amazon Verified Permissions"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC010",
+    "code": "CMP302",
+    "title": "Architecting zero-downtime deployments",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for architecture, reliability.",
+    "date": "2026-12-01",
+    "startTime": "16:00",
+    "endTime": "17:00",
+    "sessionType": "Chalk talk",
+    "track": "Compute",
+    "topics": [
+      "Architecture",
+      "Reliability",
+      "Serverless",
+      "Containers"
+    ],
+    "level": "300",
+    "venue": "Demo venue E",
+    "room": "Demo Room 104",
+    "speakers": [
+      "Demo Speaker E"
+    ],
+    "services": [
+      "AWS Lambda",
+      "Amazon ECS"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC011",
+    "code": "AIM401",
+    "title": "Multi-agent orchestration and evaluation",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for agents, evaluation.",
+    "date": "2026-12-02",
+    "startTime": "09:30",
+    "endTime": "10:30",
+    "sessionType": "Breakout session",
+    "track": "AI / ML",
+    "topics": [
+      "Agents",
+      "Evaluation"
+    ],
+    "level": "400",
+    "venue": "Demo venue A",
+    "room": "Demo Room 105",
+    "speakers": [
+      "Demo Speaker A"
+    ],
+    "services": [
+      "Amazon Bedrock",
+      "Amazon SageMaker"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "full",
+      "attendance": "waitlist"
+    }
+  },
+  {
+    "id": "SEC012",
+    "code": "SAS201",
+    "title": "Multi-tenant onboarding patterns",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for saas, identity.",
+    "date": "2026-12-02",
+    "startTime": "10:30",
+    "endTime": "11:30",
+    "sessionType": "Chalk talk",
+    "track": "SaaS",
+    "topics": [
+      "SaaS",
+      "Identity"
+    ],
+    "level": "200",
+    "venue": "Demo venue B",
+    "room": "Demo Room 106",
+    "speakers": [
+      "Demo Speaker B"
+    ],
+    "services": [
+      "Amazon Cognito",
+      "Amazon EventBridge"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC013",
+    "code": "DAT303",
+    "title": "Immutable history and event-driven data models",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for event-driven, databases.",
+    "date": "2026-12-02",
+    "startTime": "13:00",
+    "endTime": "14:00",
+    "sessionType": "Breakout session",
+    "track": "Databases",
+    "topics": [
+      "Event-driven",
+      "Databases"
+    ],
+    "level": "300",
+    "venue": "Demo venue C",
+    "room": "Demo Room 107",
+    "speakers": [
+      "Demo Speaker C"
+    ],
+    "services": [
+      "Amazon Aurora",
+      "Amazon DynamoDB"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC014",
+    "code": "NET201",
+    "title": "Practical cloud networking",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for networking, security.",
+    "date": "2026-12-02",
+    "startTime": "14:00",
+    "endTime": "15:00",
+    "sessionType": "Breakout session",
+    "track": "Networking",
+    "topics": [
+      "Networking",
+      "Security"
+    ],
+    "level": "200",
+    "venue": "Demo venue D",
+    "room": "Demo Room 108",
+    "speakers": [
+      "Demo Speaker D"
+    ],
+    "services": [
+      "Amazon VPC"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC015",
+    "code": "OBS302",
+    "title": "Build an actionable reliability dashboard",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for reliability, observability.",
+    "date": "2026-12-03",
+    "startTime": "09:00",
+    "endTime": "11:00",
+    "sessionType": "Workshop",
+    "track": "Operations",
+    "topics": [
+      "Reliability",
+      "Observability"
+    ],
+    "level": "300",
+    "venue": "Demo venue E",
+    "room": "Demo Room 109",
+    "speakers": [
+      "Demo Speaker E"
+    ],
+    "services": [
+      "Amazon CloudWatch"
+    ],
+    "keywords": [
+      "hands-on",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "full",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC016",
+    "code": "AIM101",
+    "title": "Getting started with generative AI",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for generative ai.",
+    "date": "2026-12-03",
+    "startTime": "11:00",
+    "endTime": "12:00",
+    "sessionType": "Breakout session",
+    "track": "AI / ML",
+    "topics": [
+      "Generative AI",
+      "Serverless"
+    ],
+    "level": "100",
+    "venue": "Demo venue A",
+    "room": "Demo Room 110",
+    "speakers": [
+      "Demo Speaker A"
+    ],
+    "services": [
+      "Amazon Bedrock",
+      "Amazon SageMaker"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC017",
+    "code": "SAS304",
+    "title": "Patterns for SaaS authorization at scale",
+    "abstract": "This is a fictional demo session for exploring the planner. Learn practical approaches, trade-offs, and implementation patterns for authorization, rbac.",
+    "date": "2026-12-03",
+    "startTime": "13:00",
+    "endTime": "14:00",
+    "sessionType": "Builders’ session",
+    "track": "SaaS",
+    "topics": [
+      "Authorization",
+      "RBAC"
+    ],
+    "level": "300",
+    "venue": "Demo venue B",
+    "room": "Demo Room 111",
+    "speakers": [
+      "Demo Speaker B"
+    ],
+    "services": [
+      "Amazon Cognito",
+      "Amazon EventBridge"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  },
+  {
+    "id": "SEC018",
+    "code": "DVT399",
+    "title": "Developer roundtable: production lessons",
+    "abstract": "Fictional demo session with schedule and optional fields not yet published.",
+    "date": "2026-12-03",
+    "sessionType": "Chalk talk",
+    "track": "Developer Tools",
+    "topics": [
+      "Developer Experience"
+    ],
+    "level": "300",
+    "services": [
+      "AWS CodeBuild",
+      "Amazon Q Developer"
+    ],
+    "keywords": [
+      "best practices",
+      "cloud architecture"
+    ],
+    "uiState": {
+      "availability": "available",
+      "attendance": "none"
+    }
+  }
+]
