@@ -52,6 +52,19 @@ npm run demo
 
 Google Calendar同期はAWS予約との同期ではありません。詳細な設定方法は[アプリガイド（日本語）](app/README.ja.md)を参照してください。
 
+## AWS Events APIとMCPの資料
+
+LiveアプリはAWS EventsのREST APIを利用します。APIの全体像、サインイン、セッション一覧、参加者スケジュール、予約操作の公式資料はこちらです。
+
+- [AWS Events API 概要](https://docs.aws.amazon.com/events/latest/devguide/what-is-events-api.html)
+- [Builder IDサインインとPKCE](https://docs.aws.amazon.com/events/latest/devguide/auth-signing-in.html)
+- [セッション一覧（ListSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-listsessions.html)
+- [参加者スケジュール（GetSchedule）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-getschedule.html)
+- [セッション予約（ReserveSessions）](https://docs.aws.amazon.com/events/latest/devguide/rest-op-reservesessions.html)
+- [AWS公式 Events MCPサーバー](https://docs.aws.amazon.com/events/latest/devguide/mcp-server.html)
+
+このアプリのLive接続はREST APIを直接呼び出します。ブラウザー内のWebMCPは、このタブのカタログ検索やMy Plan操作をAIツールへ公開する試作です。AWS公式Events MCPサーバーへの接続とは別の機能です。
+
 ## DemoとLive
 
 - **Demo**: 静的ビルドの架空セッションで画面を確認する開発・プレビュー用モードです。
