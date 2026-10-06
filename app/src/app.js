@@ -1522,14 +1522,13 @@ async function initialize() {
       if (session.authenticated && session.accountId) {
         state.accountId = session.accountId;
         let plan = readPlan(storage, currentPlanKey());
-        if (!plan.ids.length) {
-          const guestPlanKey = `${PLAN_KEY}:aws:reinvent2026:guest`;
-          const guestPlan = readPlan(storage, guestPlanKey);
-          if (guestPlan.ids.length) {
-            const warning = writePlan(storage, guestPlan.ids, currentPlanKey());
-            plan = { ...guestPlan, warning: warning || guestPlan.warning };
-            if (!warning) storage.removeItem(guestPlanKey);
-          }
+        const guestPlanKey = `${PLAN_KEY}:aws:reinvent2026:guest`;
+        const guestPlan = readPlan(storage, guestPlanKey);
+        if (guestPlan.ids.length) {
+          const ids = [...new Set([...plan.ids, ...guestPlan.ids])];
+          const warning = writePlan(storage, ids, currentPlanKey());
+          plan = { ids, warning: warning || plan.warning || guestPlan.warning };
+          if (!warning) storage.removeItem(guestPlanKey);
         }
         state.plan = plan.ids;
         state.warning = plan.warning;
