@@ -42,7 +42,14 @@ Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the Live 
 
 Example: call `recommend_sessions_for_gaps` with `date: "2026-12-01"` and `interests: ["ai", "genai"]` to rank candidates between 08:00 and 20:00 venue time. Override `dayStart` / `dayEnd` for another window and `perSlotLimit` for the number of suggestions per gap. Interest IDs: `ai`, `genai`, `architecture`, `serverless`, `containers`, `security`, `database`, `saas`, `developer-tools`.
 
-For a local MCP client, configure the absolute path to `app/reinvent-explorer` as `command` and `mcp` as its argument. Remote clients such as ChatGPT Web need a separate connection setup, such as Secure MCP Tunnel; tunnel credentials and user-specific configuration are not included in this repository. If signed out, `begin_aws_sign_in` returns a URL to open on the Mac running the Live callback server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
+For a local MCP client, configure the absolute path to `app/reinvent-explorer` as `command` and `mcp` as its argument. ChatGPT Web can connect through OpenAI Secure MCP Tunnel. Create a tunnel in OpenAI Platform and associate it with the target ChatGPT workspace. Download `tunnel-client` from Platform tunnel settings, then set its runtime API key as `CONTROL_PLANE_API_KEY` in the environment and run:
+
+```sh
+./app/reinvent-explorer mcp-tunnel-setup <tunnel_id>
+./app/reinvent-explorer mcp-tunnel
+```
+
+Keep `mcp-tunnel` running while using the connection. In ChatGPT Web, add a custom MCP server under Plugins / Apps and choose the same tunnel under Connection. ChatGPT must allow custom MCP servers for your account or workspace. See the [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). Tunnel IDs and API keys are not stored in this repository. The tunnel only forwards MCP calls; it does not forward the local AWS sign-in callback. If signed out, open the URL returned by `begin_aws_sign_in` on the Mac running the Live server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
 
 ## Google Calendar (optional)
 

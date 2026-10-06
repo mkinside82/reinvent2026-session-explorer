@@ -42,7 +42,14 @@ Liveモードでは参加者本人のAWS Eventsカタログを読み込みます
 
 例: `recommend_sessions_for_gaps`に`date: "2026-12-01"`と`interests: ["ai", "genai"]`を渡すと、その日の08:00–20:00（会場現地時間）を既定の範囲として候補を返します。`dayStart` / `dayEnd`で範囲、`perSlotLimit`で空き枠ごとの候補数を指定できます。関心分野IDは`ai`, `genai`, `architecture`, `serverless`, `containers`, `security`, `database`, `saas`, `developer-tools`です。
 
-ローカルMCPクライアントではcommandにこのリポジトリの`app/reinvent-explorer`、argsに`mcp`を指定してください。ChatGPT WebなどリモートMCPクライアントから使う場合は、stdioサーバーと別にSecure MCP Tunnelなどの接続設定が必要です。このリポジトリにはトンネルの認証情報や利用者固有設定を含めていません。未サインインなら`begin_aws_sign_in`が認証URLを返します。サインインのコールバックを受けるLiveサーバーが動作するMac上でURLを開いてください。ブラウザー内WebMCPはMy Planを扱う別機能です。
+ローカルMCPクライアントではcommandにこのリポジトリの`app/reinvent-explorer`、argsに`mcp`を指定してください。ChatGPT WebはOpenAI Secure MCP Tunnel経由で接続できます。OpenAI PlatformでTunnelを作成し、利用するChatGPT workspaceに関連付けてください。PlatformのTunnel設定画面で`tunnel-client`を入手し、Runtime API keyを`CONTROL_PLANE_API_KEY`環境変数として安全に設定した後、次を実行します。
+
+```sh
+./app/reinvent-explorer mcp-tunnel-setup <tunnel_id>
+./app/reinvent-explorer mcp-tunnel
+```
+
+トンネルを使う間は`mcp-tunnel`を起動したままにします。ChatGPT WebのPlugins / AppsからカスタムMCPサーバーを追加し、ConnectionでTunnelを選んで同じTunnelを指定してください。ChatGPT側でカスタムMCPサーバーを追加できる権限も必要です。詳細は[OpenAI Secure MCP Tunnel公式手順](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)を参照してください。Tunnel IDやAPI keyはリポジトリに保存しません。OpenAIトンネルはChatGPTへの中継であり、ローカルAWSサインインのコールバックを転送しません。未サインインなら`begin_aws_sign_in`が認証URLを返すため、Liveサーバーを動かしているMac上でURLを開いてください。ブラウザー内WebMCPは別機能です。
 
 ## Google Calendar（任意）
 

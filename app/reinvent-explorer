@@ -7,6 +7,7 @@ STATE_DIR="${TMPDIR:-/tmp}/reinvent-session-explorer"
 PID_FILE="$STATE_DIR/server.pid"
 LOG_FILE="$STATE_DIR/server.log"
 BIN="$APP_DIR/server/target/release/reinvent-session-explorer"
+MCP_TUNNEL_PROFILE="reinvent-session-explorer"
 
 server_pid() {
   [[ -f "$PID_FILE" ]] || return 1
@@ -89,7 +90,39 @@ case "${1:-help}" in
     fi
     exec node "$APP_DIR/mcp-server.mjs"
     ;;
+  mcp-tunnel-setup)
+    if [[ -z "${2:-}" ]]; then
+      print -u2 "Usage: $0 mcp-tunnel-setup <tunnel_id>"
+      exit 2
+    fi
+    if ! command -v tunnel-client >/dev/null; then
+      print -u2 "Install the OpenAI tunnel-client first: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"
+      exit 1
+    fi
+    if [[ -z "${CONTROL_PLANE_API_KEY:-}" ]]; then
+      print -u2 "Set CONTROL_PLANE_API_KEY in your shell environment. Do not put it in the repository."
+      exit 1
+    fi
+    tunnel-client init \
+      --sample sample_mcp_stdio_local \
+      --profile "$MCP_TUNNEL_PROFILE" \
+      --tunnel-id "$2" \
+      --mcp-command "$APP_DIR/reinvent-explorer mcp"
+    tunnel-client doctor --profile "$MCP_TUNNEL_PROFILE" --explain
+    print -r -- "Setup complete. Start the connection with: $0 mcp-tunnel"
+    ;;
+  mcp-tunnel)
+    if ! command -v tunnel-client >/dev/null; then
+      print -u2 "Install the OpenAI tunnel-client first: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"
+      exit 1
+    fi
+    if [[ -z "${CONTROL_PLANE_API_KEY:-}" ]]; then
+      print -u2 "Set CONTROL_PLANE_API_KEY in your shell environment. Do not put it in the repository."
+      exit 1
+    fi
+    exec tunnel-client run --profile "$MCP_TUNNEL_PROFILE"
+    ;;
   help|*)
-    print -r -- "Usage: $0 {start|stop|status|diagnostics|mcp}"
+    print -r -- "Usage: $0 {start|stop|status|diagnostics|mcp|mcp-tunnel-setup <tunnel_id>|mcp-tunnel}"
     ;;
 esac

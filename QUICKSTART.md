@@ -33,3 +33,14 @@ LiveはmacOSのRustサーバーがAWS Events APIへ接続します。利用者�
 AWS Builder IDサインイン、AWS予約送信、Google Calendarへの書き込みは、それぞれ利用者が画面で明示的に操作した場合だけ行います。DemoとLiveはデータ保存領域も分かれています。
 
 詳細は[README](README.md)と[アプリガイド（日本語）](app/README.ja.md)を参照してください。
+
+## ChatGPT WebからMCPを使う
+
+ChatGPT WebからローカルMCPを使う場合、OpenAI Secure MCP TunnelのTunnel ID、Platform Runtime API key、`tunnel-client`が必要です。準備後は次のコマンドで設定・起動できます。詳細は[アプリガイド](app/README.ja.md)を参照してください。
+
+```sh
+./app/reinvent-explorer mcp-tunnel-setup <tunnel_id>
+./app/reinvent-explorer mcp-tunnel
+```
+
+API keyは環境変数`CONTROL_PLANE_API_KEY`から読み込みます。ソースコード、コマンド履歴、リポジトリに書き込まないでください。トンネル起動中のみChatGPTから利用でき、AWSサインインURLはLiveサーバーの動作するMac上で開く必要があります。
