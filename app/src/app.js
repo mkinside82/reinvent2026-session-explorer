@@ -1,262 +1,2198 @@
-import {t,ui,initializeLanguage,setLanguage,getLanguage,getLocale,staticLanguageBindings,planSummaryLabel} from './i18n.js';
-import {sessionRepository,sideEventRepository,adaptAwsPersonalTimes,venueLocalDateTimeToUtc,localSessionStatus,startBuilderIdSignIn,signOutAws,signOutBuilderId,requestCatalogRefresh,fetchLiveCatalog,fetchLiveSchedule,fetchRecommendationNews,reserveLiveSessions,cancelLiveReservations,saveLivePersonalTime,googleCalendarStatus,configureGoogleCalendar,connectGoogleCalendar,syncGoogleCalendar,removeGoogleCalendarItems} from './session-data.js';
-import {createCatalog,sortSessions,conflictMap,minutes,validInterval} from './session-model.js';
-import {createCalendarIcs,calendarInstant} from './calendar-ics.js';
-import {getRecommendations,getNewsRecommendations,getPersonalizedRecommendations,renderRecommendations} from './recommendations.js';
-import {PLAN_KEY,readPlan,writePlan} from './plan-store.js';
-import {MULTI_KEYS,defaultFilters,readSearchState,searchURL} from './search-state.js';
-import {esc,dateLabel,timeLabel,venueToday,blank} from './ui-utils.js?v=20261006';
-import {renderCard,renderCompact,renderPlanList,renderTimeline,renderDetail,renderComparison} from './views.js';
-import {translateSessionToJapanese} from './translate.js';
-const $=s=>document.querySelector(s);
-const storage={getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)};
-initializeLanguage(storage,globalThis.navigator?.language);
-const applyStaticLanguage=staticLanguageBindings(document);
+import {
+  t,
+  ui,
+  initializeLanguage,
+  setLanguage,
+  getLanguage,
+  getLocale,
+  staticLanguageBindings,
+  planSummaryLabel,
+} from './i18n.js';
+import {
+  sessionRepository,
+  sideEventRepository,
+  adaptAwsPersonalTimes,
+  venueLocalDateTimeToUtc,
+  localSessionStatus,
+  startBuilderIdSignIn,
+  signOutAws,
+  signOutBuilderId,
+  requestCatalogRefresh,
+  fetchLiveCatalog,
+  fetchLiveSchedule,
+  fetchRecommendationNews,
+  reserveLiveSessions,
+  cancelLiveReservations,
+  saveLivePersonalTime,
+  googleCalendarStatus,
+  configureGoogleCalendar,
+  connectGoogleCalendar,
+  syncGoogleCalendar,
+  removeGoogleCalendarItems,
+} from './session-data.js';
+import {
+  createCatalog,
+  sortSessions,
+  conflictMap,
+  minutes,
+  validInterval,
+} from './session-model.js';
+import { createCalendarIcs, calendarInstant } from './calendar-ics.js';
+import {
+  getRecommendations,
+  getNewsRecommendations,
+  getPersonalizedRecommendations,
+  renderRecommendations,
+} from './recommendations.js';
+import { PLAN_KEY, readPlan, writePlan } from './plan-store.js';
+import { MULTI_KEYS, defaultFilters, readSearchState, searchURL } from './search-state.js';
+import { esc, dateLabel, timeLabel, venueToday, blank } from './ui-utils.js?v=20261006';
+import {
+  renderCard,
+  renderCompact,
+  renderPlanList,
+  renderTimeline,
+  renderDetail,
+  renderComparison,
+} from './views.js';
+import { translateSessionToJapanese } from './translate.js';
+const $ = (s) => document.querySelector(s);
+const storage = {
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
+};
+initializeLanguage(storage, globalThis.navigator?.language);
+const applyStaticLanguage = staticLanguageBindings(document);
 applyStaticLanguage();
-$('#languageSwitch').value=getLanguage();
-const runtimeMode=globalThis.REINVENT_RUNTIME?.mode==='live'?'live':'demo';
-const saved=readPlan(storage),initial=readSearchState(window.location.href);
-if(!initial.hasFilterCondition&&!initial.filters.levelDefaultSuppressed)initial.filters.minLevel=200;
-let recommendationInterests=[];try{const stored=JSON.parse(storage.getItem('reinvent-recommendation-interests')||'[]');if(Array.isArray(stored))recommendationInterests=stored.filter(id=>typeof id==='string');}catch{}
-let rememberedView;try{rememberedView=storage.getItem('reinvent-view');}catch{}
-const state={sessions:[],sideEvents:[],catalog:createCatalog([]),sideEventCatalog:createCatalog([]),byId:new Map(),status:'loading',source:runtimeMode,accountId:'',catalogMeta:null,localApiAvailable:false,recommendationNews:{items:[],fetchedAt:null,refreshing:false,error:null},googleStatus:{configured:false,connected:false,calendarReady:false,syncedItemIds:[]},googleSelected:[],googleResult:{},awsReserved:new Set(),awsFavorites:new Set(),awsPersonalTimes:[],awsScheduleStatus:'idle',awsScheduleFetchedAt:0,reservationSelection:new Set(),reservationResults:null,reservationStage:'select',reservationMode:'reserve',reservationBusy:false,plan:runtimeMode==='demo'?saved.ids:[],warning:runtimeMode==='demo'?saved.warning:'',filters:initial.filters,view:initial.explicit?initial.view:rememberedView==='compact'?'compact':'card',sort:initial.sort,exploreKind:initial.kind,planDate:'',planView:'timeline',active:'explore',detailId:null,detailTranslations:new Map(),recommendationInterests,compare:[],comparison:[],draft:null};
-const FACET_LABELS={date:'Date',track:'Track',topic:'Topic',level:'Level',sessionType:'Session Type',venue:'Venue',service:'Service',speaker:'Speaker'};
-const byId=id=>state.byId.get(id),chosen=()=>sortSessions(state.plan.map(byId).filter(Boolean));
-const plannerItems=()=>{const items=new Map(chosen().map(item=>[item.id,item]));if(state.source==='live'){for(const item of state.sessions)if(state.awsReserved.has(item.id))items.set(item.id,item);for(const item of state.awsPersonalTimes)items.set(item.id,item);}return sortSessions([...items.values()]);};
-const currentPlanKey=()=>state.source==='demo'?PLAN_KEY:(state.source==='live'&&state.accountId?ui`${PLAN_KEY}:aws:reinvent2026:${state.accountId}`:null);
-const googleSelectionKey=()=>ui`reinvent-google-selected:${currentPlanKey()||'demo'}`;
-function readGoogleSelection(){try{const raw=storage.getItem(googleSelectionKey()),ids=raw?JSON.parse(raw):[];return Array.isArray(ids)?[...new Set(ids.filter(id=>typeof id==='string'))]:[];}catch{return [];}}
-function saveGoogleSelection(){try{storage.setItem(googleSelectionKey(),JSON.stringify(state.googleSelected));}catch{}}
-let controller,sequence=0,toastTimer,searchTimer,livePollTimer,newsPollTimer,displayLimit=40,facets={},exploreScroll=0,scheduleRefreshPromise=null,editingPersonalTimeId='';
-const tomorrow=()=>{const d=new Date(ui`${venueToday()}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);};
-const quickDefinitions=()=>[
-{label:'Today',key:'date',value:venueToday()},{label:'Tomorrow',key:'date',value:tomorrow()},
-{label:'AI / ML',key:'track',value:'AI / ML',separator:true},{label:'Generative AI',key:'topic',value:'Generative AI'},{label:'Architecture',key:'topic',value:'Architecture'},{label:'Serverless',key:'topic',value:'Serverless'},{label:'Containers',key:'topic',value:'Containers'},{label:'Security',key:'track',value:'Security'},{label:'Database',key:'track',value:'Databases'},{label:'SaaS',key:'track',value:'SaaS'},{label:'Developer Tools',key:'track',value:'Developer Tools'},
-{label:'Level 200+',key:'minLevel',value:200,separator:true},{label:t('レベル未設定'),key:'includeUnleveled',value:true},
-...[200,300,400,500].map((n,i)=>({label:'Level '+n,key:'level',value:String(n),separator:i===0})),
-...['Breakout session','Chalk talk','Workshop','Builders’ session'].map((v,i)=>({label:['Breakout','Chalk Talk','Workshop',"Builders' Session"][i],key:'sessionType',value:v,separator:i===0}))];
-function notify(message){$('#toast').textContent=message;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,2800);}
-function syncURL(push=false){const url=searchURL(window.location.href,{filters:state.filters,view:state.view,sort:state.sort,kind:state.exploreKind});if(url.href!==window.location.href){try{window.history[push?'pushState':'replaceState'](null,'',url.href);}catch{}}}
-function results(){if(state.exploreKind==='sideEvents')return state.sideEventCatalog.search(state.filters,state.sort);const sessions=state.catalog.search(state.filters,state.sort);return state.exploreKind==='favorites'?sessions.filter(item=>state.awsFavorites.has(item.id)):sessions;}
-function quickPressed(d){if(d.key==='minLevel')return Number.isFinite(state.filters.minLevel)&&state.filters.minLevel===Number(d.value);if(d.key==='includeUnleveled')return state.filters.includeUnleveled;return state.filters[d.key].includes(d.value);}
-function renderQuick(){const defs=state.exploreKind==='sideEvents'?[]:quickDefinitions();$('#quickFilters').innerHTML=defs.map(d=>ui`${d.separator?'<span class="quick-divider" aria-hidden="true"></span>':''}<button class="quick-chip" data-quick-key="${d.key}" data-quick-value="${esc(d.value)}" aria-pressed="${quickPressed(d)}">${t(d.label)}</button>`).join('');}
-function renderApplied(){const chips=[];let count=0;for(const key of MULTI_KEYS)for(const value of state.filters[key]){count++;chips.push(ui`<button class="filter-chip" data-remove-filter="${key}" data-filter-value="${esc(value)}" aria-label="${t(FACET_LABELS[key])} ${esc(value)}を解除">${t(FACET_LABELS[key])}: ${esc(key==='date'?dateLabel(value):value)} <span aria-hidden="true">×</span></button>`);}if(Number.isFinite(state.filters.minLevel)){count++;chips.push(ui`<button class="filter-chip" data-remove-filter="minLevel" aria-label="Level ${state.filters.minLevel}以上を解除">Level ${state.filters.minLevel}以上 <span aria-hidden="true">×</span></button>`);}if(state.filters.includeUnleveled){count++;chips.push(t('<button class="filter-chip" data-remove-filter="includeUnleveled" aria-label="レベル未設定を解除">レベル未設定 <span aria-hidden="true">×</span></button>'));}if(state.filters.from||state.filters.to){count++;chips.push(ui`<button class="filter-chip" data-remove-filter="time" aria-label="時間の条件を解除">${state.filters.fit==='contained'?t('枠内'):'Time'}: ${esc(state.filters.from||'00:00')}–${esc(state.filters.to||'24:00')} <span aria-hidden="true">×</span></button>`);}$('#activeFilters').innerHTML=chips.join('')+(chips.length?ui`<button class="quiet small" data-action="resetFilters">Clear all</button>`:'');$('#filterCount').textContent=count;$('#filterCount').hidden=!count;$('#clearSearch').hidden=!state.filters.query;}
-function renderTray(){const items=state.compare.map(byId).filter(Boolean);$('#compareTray').hidden=!items.length;$('#compareTray').innerHTML=ui`<span>${items.length} / 3件を比較対象に選択 · ${items.map(s=>esc(s.code||s.title)).join(' / ')}</span><button class="primary small" data-action="compareSelected" ${items.length<2?'disabled':''}>Compare</button><button class="quiet small" data-action="clearCompare">解除</button>`;}
-function renderExplore(map){
- const found=results(),plan=new Set(state.plan),sideMode=state.exploreKind==='sideEvents',favoriteMode=state.exploreKind==='favorites';
- $('#resultCount').textContent=sideMode?ui`${found.length.toLocaleString(getLocale())} side events`:state.status==='loading'?t('読み込み中'):state.status==='error'?t('取得できませんでした'):state.status==='unauthenticated'?t('サインインが必要です'):favoriteMode?ui`${found.length.toLocaleString(getLocale())} ${t('AWSお気に入り')}`:ui`${found.length.toLocaleString(getLocale())} sessions`;
- $('#cards').setAttribute('aria-busy',String(!sideMode&&state.status==='loading'));
- if(sideMode&&!state.sideEvents.length)$('#cards').innerHTML=blank(t('掲載中のサイドイベントはありません'),t('公式情報が確認できたイベントを追加します。'));
- else if(sideMode&&!found.length)$('#cards').innerHTML=blank(t('一致するイベントがありません'),t('キーワードやFilterを少し減らしてお試しください。'),t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'));
- else if(sideMode){const subset=found.slice(0,displayLimit);$('#cards').innerHTML=(state.view==='compact'?renderCompact(subset,plan,map,state.compare):subset.map(s=>renderCard(s,plan,map,state.compare)).join(''))+(found.length>displayLimit?ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length-displayLimit}件）</button>`:'');}
- else if(state.status==='loading')$('#cards').innerHTML='<div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div>';
- else if(state.status==='unauthenticated')$('#cards').innerHTML=blank(t('AWS Builder IDでサインインしてください'),t('AWSの実カタログを読むには、イベント登録済みのアカウントが必要です。'),'<button data-action="signIn" class="primary">Builder ID sign-in</button>');
- else if(state.status==='error')$('#cards').innerHTML=blank(t('セッションを取得できませんでした'),t('通信状態を確認して、もう一度お試しください。'),t('<button data-action="retry" class="primary">再試行</button>'));
- else if(!state.sessions.length)$('#cards').innerHTML=blank(state.source==='live'?t('AWSカタログを取得しています'):t('セッションデータがまだありません'),state.source==='live'?t('最初のページを受信すると、続きの取得中も結果を表示します。'):t('データが公開されると、ここに表示されます。'),t('<button data-action="retry" class="quiet">再読み込み</button>'));
- else if(!found.length)$('#cards').innerHTML=favoriteMode?blank(t('AWSお気に入りはありません'),t('AWS側でお気に入りにしたセッションが、Scheduleの更新後にここへ表示されます。')):blank(t('一致するセッションがありません'),t('キーワードやFilterを少し減らしてお試しください。'),t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'));
- else {const subset=found.slice(0,displayLimit);$('#cards').innerHTML=(state.view==='compact'?renderCompact(subset,plan,map,state.compare):subset.map(s=>renderCard(s,plan,map,state.compare)).join(''))+(found.length>displayLimit?ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length-displayLimit}件）</button>`:'');}
- for(const [id,value] of [['cardView','card'],['compactView','compact']]){$('#'+id).classList.toggle('selected',state.view===value);$('#'+id).setAttribute('aria-pressed',String(state.view===value));}
- $('#sort').value=state.sort;
-}
-function renderPlan(items,map){
- const conflicted=items.filter(s=>map.get(s.id)?.length),dates=[...new Set([...state.sessions,...state.sideEvents].map(s=>s.date).filter(Boolean))].sort();
- if(!state.planDate&&state.status==='ready'){
-  const plannedDates=[...new Set(items.map(s=>s.date).filter(Boolean))].sort();
-  state.planDate=plannedDates.find(date=>date>=venueToday())||plannedDates.at(-1)||(dates.includes(venueToday())?venueToday():dates[0]||'');
- }
- const allDates=[...new Set([...dates,...(state.planDate&&!['all','unknown'].includes(state.planDate)?[state.planDate]:[])])].sort();
- $('#planDate').innerHTML=allDates.map(date=>ui`<option value="${date}">${esc(dateLabel(date))}${date===venueToday()?t(' · 今日'):''}</option>`).join('')+t('<option value="all">すべての日付</option><option value="unknown">日付未定</option>');
- $('#planDate').value=state.planDate;$('#clearPlan').disabled=!state.plan.length;$('#exportCalendar').disabled=!items.some(validInterval);
- const reservationAvailable=state.source==='live'&&state.localApiAvailable&&!!state.accountId;
- $('#reservePlanned').hidden=!reservationAvailable;$('#manageReservations').hidden=!reservationAvailable;$('#addPersonalTime').hidden=!reservationAvailable;$('#refreshSchedule').hidden=!reservationAvailable;$('#refreshSchedule').disabled=state.awsScheduleStatus==='loading';
- $('#planCount').textContent=items.length;$('#mobilePlanCount').textContent=items.length;$('#navConflict').hidden=!conflicted.length;
- const localCount=state.plan.length,reservedCount=items.filter(s=>state.awsReserved.has(s.id)).length;
- const scheduleStatus=$('#awsScheduleStatus');scheduleStatus.hidden=!reservationAvailable;scheduleStatus.textContent=state.awsScheduleStatus==='loading'?t('AWS Scheduleをバックグラウンドで確認中です。'):state.awsScheduleStatus==='error'?t('AWS Scheduleを更新できませんでした。表示中の情報は保持しています。'):state.awsScheduleStatus==='ready'?ui`${t('AWS Scheduleと同期済み')} · ${reservedCount}${t('件予約済み')} · ${t('ローカル候補')} ${localCount}`:'';scheduleStatus.classList.toggle('is-error',state.awsScheduleStatus==='error');
- $('#planSummary').innerHTML=ui`<p class="plan-summary">${esc(planSummaryLabel(items.length,new Set(items.map(s=>s.date).filter(Boolean)).size))}</p>`+(conflicted.length?ui`<div class="conflict-banner"><strong>Schedule Conflict</strong> · ${conflicted.length}件の予定で重複<br>Compareで内容を比べて選択できます。</div>`:'');
- for(const [id,value] of [['listView','list'],['timelineView','timeline']]){$('#'+id).classList.toggle('selected',state.planView===value);$('#'+id).setAttribute('aria-pressed',String(state.planView===value));}
- const rows=items.filter(s=>state.planDate==='all'||(state.planDate==='unknown'?!s.date:s.date===state.planDate));
- let content;
- if(!items.length&&state.awsScheduleStatus==='loading'&&reservationAvailable)content=blank(t('AWS Scheduleを確認しています'),t('セッション検索と他の操作はそのまま利用できます。'));
- else if(!items.length)content=blank(t('My Planはまだ空です'),t('気になるセッションを追加して、1日の予定を組み立てましょう。'),t('<button data-action="browse" class="primary">セッションを探す</button>'));
- else if(state.status==='loading')content=blank(t('候補を読み込んでいます'),t('保存済みのMy Planを確認しています。'));
- else if(state.status==='error')content=blank(t('保存した候補を表示できません'),t('候補のIDは保持しています。セッションを再取得してください。'),t('<button data-action="retry" class="quiet">再試行</button>'));
- else if(!rows.length)content=blank(t('この日の候補はありません'),t('日付を切り替えるか、セッションを追加してください。'));
- else if(state.planView==='list')content=renderPlanList(rows,map,state.planDate==='all',new Set(state.plan));
- else if(state.planDate==='all')content=blank(t('Timelineの日付を選んでください'),t('1日ずつ選ぶと、予定と空き時間を確認できます。'));
- else content=renderTimeline(rows,map,state.planDate,new Set(state.plan));
- const missing=state.plan.filter(id=>!byId(id));if(state.status==='ready'&&missing.length)content+=ui`<div class="notice" style="margin-top:14px">現在のデータにない候補が${missing.length}件あります。${missing.map(id=>ui`<div>${esc(id)} <button class="remove-button" data-remove-plan="${esc(id)}">削除</button></div>`).join('')}</div>`;
- const scroll=$('#planContent').querySelector?.('.timeline-scroll')?.scrollTop||0;$('#planContent').innerHTML=content;const timeline=$('#planContent').querySelector?.('.timeline-scroll');if(timeline)timeline.scrollTop=scroll;
-}
-function renderNavigation(){const plan=state.active==='plan';document.body.classList.toggle('plan-focus',plan);for(const [id,selected] of [['showSessions',!plan],['showPlan',plan],['mobileExplore',!plan],['mobilePlan',plan]]){$('#'+id).classList.toggle('selected',selected);$('#'+id).setAttribute('aria-pressed',String(selected));}$('#sessionsPanel').classList.toggle('mobile-hidden',plan);$('#planPanel').classList.toggle('mobile-active',plan);document.body.classList.toggle('mobile-planning',plan);}
-function changeActive(value,{restore=true}={}){if(state.active==='explore')exploreScroll=window.scrollY||0;state.active=value;renderNavigation();if(value==='plan')void refreshAwsSchedule();if(window.matchMedia?.('(max-width: 900px)').matches)window.scrollTo?.({top:value==='explore'&&restore?exploreScroll:0,behavior:'instant'});}
-function renderSourceInfo(){
- const live=state.source==='live';
- $('#sourceControls').hidden=false;
- $('#sourceBadge').hidden=live;
- $('#sourceBadge').textContent=t(live?'AWS接続':'プレビュー');
- $('#sourceBadge').classList.toggle('live-badge',live);
- $('#demoMode').hidden=true;$('#liveMode').hidden=true;
- $('#signIn').hidden=!live||!state.localApiAvailable||!!state.accountId;
- $('#refreshLive').hidden=!live||!state.localApiAvailable||!state.accountId;
- $('#signOut').hidden=!live||!state.localApiAvailable||!state.accountId;
- $('#sourceDescription').textContent=live
-  ?state.localApiAvailable?t('AWS Events API · re:Invent 2026 · AWS予約をMy Planに同期。候補はアカウント別にローカル保存します。'):t('AWS接続用サーバーに接続できません。アプリを再起動してください。')
-  :t('プレビュー（サンプルデータ） · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。');
- $('#timeContext').textContent=live?t('AWSのtimezoneがある場合はLas Vegasへ変換し、欠落時はAPI記載の時刻をそのまま表示します。'):t('時刻：会場現地時間（Las Vegas）');
- const meta=state.catalogMeta;let note='';
- if(live&&meta){if(meta.refreshing)note=ui`AWS catalog取得中 · ${meta.pages}ページ受信${meta.totalCount===null?'':ui` · totalCount ${meta.totalCount}`}`;else if(meta.error)note=ui`最新取得に失敗しました（${meta.error}）。表示中のcacheは保持しています。`;else if(meta.complete)note=ui`${meta.pages}ページを取得 · 更新 ${meta.fetchedAt?new Date(meta.fetchedAt*1000).toLocaleString(getLocale()): t('時刻不明')}${meta.totalCount===null?'':ui` · totalCount ${meta.totalCount}`}`;else if(meta.fetchedAt)note=ui`未完了のcache · ${meta.pages}ページ取得済み · 続きの取得を再試行できます。`;}
- $('#catalogNotice').textContent=note;$('#catalogNotice').hidden=!note;
- $('#planFootnote').textContent=live?t('AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません'):t('候補はこのブラウザーに保存 · AWS予約とは未同期');
-}
-function renderKindSwitch(){for(const [id,kind] of [['showSessionItems','sessions'],['showSideEvents','sideEvents'],['showAwsFavorites','favorites']]){$('#'+id).classList.toggle('selected',state.exploreKind===kind);$('#'+id).setAttribute('aria-pressed',String(state.exploreKind===kind));}$('#showAwsFavorites').hidden=state.source!=='live'||!state.accountId;$('#showAwsFavorites').textContent=ui`${t('AWSお気に入り')}（${state.awsFavorites.size}）`;}
-function renderGooglePanel(items){const enabled=state.localApiAvailable&&state.source==='live';$('#googlePanel').hidden=!enabled;$('#googleSettings').hidden=!enabled;if(!enabled)return;const status=state.googleStatus;$('#googleConnect').hidden=!status.configured||status.connected;$('#googleStatus').textContent=!status.configured?t('OAuth client IDを登録してください。'):!status.connected?t('Googleアカウント未接続。Google設定から接続できます。'):status.calendarReady?t('専用カレンダーに接続中'):t('接続済み · 同期時に専用カレンダーを作成');const candidates=new Map(items.filter(item=>validInterval(item)&&(item.dataSource==='aws'||item.itemType==='sideEvent'||item.itemType==='personalTime')).map(item=>[item.id,item]));for(const id of status.syncedItemIds||[]){const item=byId(id);if(item&&validInterval(item))candidates.set(id,item);}const plannedIds=new Set(items.map(item=>item.id));const validIds=new Set([...candidates.keys()].filter(id=>plannedIds.has(id)||(status.syncedItemIds||[]).includes(id)));const oldSelection=state.googleSelected;state.googleSelected=state.googleSelected.filter(id=>validIds.has(id));if(oldSelection.length!==state.googleSelected.length)saveGoogleSelection();$('#googleEventChoices').innerHTML=candidates.size?[...candidates.values()].map(item=>ui`<div class="google-choice"><label><input type="checkbox" data-google-select="${esc(item.id)}" ${state.googleSelected.includes(item.id)?'checked':''} ${plannedIds.has(item.id)?'':'disabled'}><span class="google-choice-title">${esc(item.title)}<small>${esc(dateLabel(item.date))} · ${esc(item.startTime)}–${esc(item.endTime)}${plannedIds.has(item.id)?'':t(' · Planから削除済み')}</small></span></label>${status.syncedItemIds?.includes(item.id)?'<button class="quiet small" data-google-remove="'+esc(item.id)+t('">Googleから削除</button>'):''}</div>`).join(''):t('<p class="hint">日時の確定したPlan項目がありません。</p>');const selectedCount=state.googleSelected.filter(id=>plannedIds.has(id)).length;$('#googleSync').textContent=ui`選択した予定を同期（${selectedCount}件）`;$('#googleSync').disabled=!status.connected||selectedCount===0;}
-function updateGoogleSelectionUI(){const plannedIds=new Set(plannerItems().map(item=>item.id)),selectedCount=state.googleSelected.filter(id=>plannedIds.has(id)).length;$('#googleSync').textContent=ui`選択した予定を同期（${selectedCount}件）`;$('#googleSync').disabled=!state.googleStatus.connected||selectedCount===0;}
-function renderGoogleResults(){const errors=Object.entries(state.googleResult).filter(([,reason])=>reason);const labels={GOOGLE_REAUTH_REQUIRED:t('Googleへ再接続してください'),GOOGLE_RATE_LIMITED:t('Google側で一時的な上限に達しました'),GOOGLE_PERMISSION_OR_QUOTA_ERROR:t('権限またはAPI上限を確認してください'),GOOGLE_NETWORK_ERROR:t('通信を確認して再試行してください'),KEYCHAIN_UNAVAILABLE:t('Keychainへ対応情報を保存できませんでした')};$('#googleSyncResults').innerHTML=errors.map(([id,reason])=>ui`<p role="status">${esc(byId(id)?.title||id)} · ${esc(labels[reason]||t('同期に失敗しました。選択を保って再試行できます'))}</p>`).join('');}
-function reservationCandidates(){return chosen().filter(item=>item.dataSource==='aws');}
-function renderReservationDialog(){const candidates=reservationCandidates(),selectedIds=[...state.reservationSelection],selected=selectedIds.map(byId).filter(Boolean),conflicts=conflictMap(plannerItems());const body=$('#reservationBody'),next=$('#reservationNext'),back=$('#reservationBack'),cancel=state.reservationMode==='cancel';$('#reservationHeading').textContent=t(cancel?'予約を解除するセッションを選択':'AWSへ予約するセッションを選択');
- if(cancel){
-  if(state.reservationStage==='results'){
-   const failed=new Map((state.reservationResults?.failed||[]).map(row=>[row.sessionId,row.code]));const done=new Set(state.reservationResults?.cancelled||[]),unknown=new Set(state.reservationResults?.unknown||[]);
-   body.innerHTML=selectedIds.map(id=>{const item=byId(id),code=failed.get(id);const label=done.has(id)?t('予約解除済み・AWS Scheduleで確認済み'):unknown.has(id)?t('解除結果不明・Scheduleを確認してください'):t('予約を解除できませんでした');return ui`<div class="reservation-result"><strong class="${done.has(id)?'confirmed':code?'failed':'unknown'}">${esc(label)}</strong><span>${esc(item?.title||id)} · ${esc(item?.code||id)}</span>${code?ui`<small>${esc(reservationFailureLabel(code))}</small>`:''}</div>`;}).join('');$('#reservationIntro').textContent=state.reservationResults?.scheduleConfirmed?t('AWS Scheduleを再読込し、解除結果を照合しました。'):t('AWS Scheduleを再読込できませんでした。解除結果を確認してください。');next.hidden=true;back.textContent=t('閉じる');
-  }else if(state.reservationStage==='confirm'){
-   body.innerHTML=ui`<p class="reservation-warning">${t('選択した予約をAWSから1件ずつ解除します。この操作はMy Planの候補を削除しません。')}</p><ul class="google-sync-preview">${selectedIds.map(id=>{const item=byId(id);return ui`<li>${esc(item?.title||id)} · ${esc(item?.code||id)}</li>`;}).join('')}</ul><p class="hint">${t('解除後にAWS Scheduleを再読込し、セッションごとに結果を表示します。')}</p>`;next.textContent=t('選択した予約を解除');next.hidden=false;next.disabled=false;back.textContent=t('選択へ戻る');
-  }else{
-   const reserved=[...state.awsReserved];const tooMany=state.reservationSelection.size>=10;body.innerHTML=reserved.length?reserved.map(id=>{const item=byId(id);return ui`<label class="reservation-choice"><input type="checkbox" data-reservation-select="${esc(id)}" ${state.reservationSelection.has(id)?'checked':''} ${!state.reservationSelection.has(id)&&tooMany?'disabled':''}><span><strong>${esc(item?.title||t('カタログにないセッション'))}</strong><small>${esc(item?.code||id)}${item?ui` · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}`:''} · ${t('AWS Scheduleに予約済み')}</small></span></label>`;}).join(''):t('<p class="hint">AWS Scheduleに予約済みのセッションはありません。</p>');$('#reservationIntro').textContent=t('AWS Scheduleの予約を最大10件選んで解除できます。My Planから外す操作とは別です。');next.textContent=ui`${t('選択内容を確認')}（${state.reservationSelection.size}/10）`;next.hidden=false;next.disabled=!state.reservationSelection.size;back.textContent=t('閉じる');
+$('#languageSwitch').value = getLanguage();
+const runtimeMode = globalThis.REINVENT_RUNTIME?.mode === 'live' ? 'live' : 'demo';
+const saved = readPlan(storage),
+  initial = readSearchState(window.location.href);
+if (!initial.hasFilterCondition && !initial.filters.levelDefaultSuppressed)
+  initial.filters.minLevel = 200;
+let recommendationInterests = [];
+try {
+  const stored = JSON.parse(storage.getItem('reinvent-recommendation-interests') || '[]');
+  if (Array.isArray(stored))
+    recommendationInterests = stored.filter((id) => typeof id === 'string');
+} catch {}
+let rememberedView;
+try {
+  rememberedView = storage.getItem('reinvent-view');
+} catch {}
+const state = {
+  sessions: [],
+  sideEvents: [],
+  catalog: createCatalog([]),
+  sideEventCatalog: createCatalog([]),
+  byId: new Map(),
+  status: 'loading',
+  source: runtimeMode,
+  accountId: '',
+  catalogMeta: null,
+  localApiAvailable: false,
+  recommendationNews: { items: [], fetchedAt: null, refreshing: false, error: null },
+  googleStatus: { configured: false, connected: false, calendarReady: false, syncedItemIds: [] },
+  googleSelected: [],
+  googleResult: {},
+  awsReserved: new Set(),
+  awsFavorites: new Set(),
+  awsPersonalTimes: [],
+  awsScheduleStatus: 'idle',
+  awsScheduleFetchedAt: 0,
+  reservationSelection: new Set(),
+  reservationResults: null,
+  reservationStage: 'select',
+  reservationMode: 'reserve',
+  reservationBusy: false,
+  plan: runtimeMode === 'demo' ? saved.ids : [],
+  warning: runtimeMode === 'demo' ? saved.warning : '',
+  filters: initial.filters,
+  view: initial.explicit ? initial.view : rememberedView === 'compact' ? 'compact' : 'card',
+  sort: initial.sort,
+  exploreKind: initial.kind,
+  exploreView: 'sessions',
+  planDate: '',
+  planView: 'timeline',
+  active: 'explore',
+  detailId: null,
+  detailTranslations: new Map(),
+  recommendationInterests,
+  compare: [],
+  comparison: [],
+  draft: null,
+};
+const FACET_LABELS = {
+  date: 'Date',
+  track: 'Track',
+  topic: 'Topic',
+  level: 'Level',
+  sessionType: 'Session Type',
+  venue: 'Venue',
+  service: 'Service',
+  speaker: 'Speaker',
+};
+const byId = (id) => state.byId.get(id),
+  chosen = () => sortSessions(state.plan.map(byId).filter(Boolean));
+const plannerItems = () => {
+  const items = new Map(chosen().map((item) => [item.id, item]));
+  if (state.source === 'live') {
+    for (const item of state.sessions) if (state.awsReserved.has(item.id)) items.set(item.id, item);
+    for (const item of state.awsPersonalTimes) items.set(item.id, item);
   }
-  return;
- }
- if(state.reservationStage==='results'){
-  const failures=new Map((state.reservationResults?.failed||[]).map(row=>[row.sessionId,row]));const unknown=new Set(state.reservationResults?.unknown||[]);const successful=new Set(state.reservationResults?.successful||[]);
-  body.innerHTML=selected.map(item=>{const failure=failures.get(item.id);const confirmed=state.awsReserved.has(item.id)||(successful.has(item.id)&&state.reservationResults?.scheduleConfirmed);const label=confirmed?t('予約済み・AWS Scheduleで確認済み'):unknown.has(item.id)?t('結果不明・AWS Scheduleで未確認'):failure?t('予約できませんでした'):successful.has(item.id)?t('AWS応答は成功・Schedule未確認'):t('予約済み');const statusClass=confirmed?'confirmed':failure?'failed':'unknown';const reason=failure?reservationFailureLabel(failure.code):'';const conflictNames=(failure?.conflictsWith||[]).map(id=>byId(id)?.code||id).join('、');return ui`<div class="reservation-result"><strong class="${statusClass}">${esc(label)}</strong><span>${esc(item.title)} · ${esc(item.code)}</span>${reason?ui`<small>${esc(reason)}${conflictNames?ui` · ${t('競合')}: ${esc(conflictNames)}`:''}</small>`:''}</div>`;}).join('');
-  $('#reservationIntro').textContent=state.reservationResults?.scheduleConfirmed?t('AWS Scheduleを再読込し、予約状態を照合しました。'):t('AWS Scheduleを再読込できませんでした。結果を確定できない項目があります。');next.hidden=true;back.textContent=t('閉じる');
- }else if(state.reservationStage==='confirm'){
-  body.innerHTML=ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="google-sync-preview">${selected.map(item=>ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}${conflicts.get(item.id)?.length?ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>`:''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;next.textContent=t('この内容でAWSへ送信');next.hidden=false;back.textContent=t('選択へ戻る');
- }else{
-  const tooMany=state.reservationSelection.size>=10;body.innerHTML=candidates.length?candidates.map(item=>{const reserved=state.awsReserved.has(item.id),eligible=item.reservable===true&&!reserved;const note=reserved?t('AWS Scheduleに予約済み'):item.reservable===true?t('予約可能'):t('AWS API上で予約対象外');return ui`<label class="reservation-choice ${eligible?'':'is-disabled'}"><input type="checkbox" data-reservation-select="${esc(item.id)}" ${state.reservationSelection.has(item.id)?'checked':''} ${eligible?'':'disabled'} ${!state.reservationSelection.has(item.id)&&tooMany?'disabled':''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)} · ${esc(note)}${conflicts.get(item.id)?.length?ui` · ${t('My Plan内で時間重複')}`:''}</small></span></label>`;}).join(''):t('<p class="hint">My PlanにAWSセッションがありません。</p>');$('#reservationIntro').textContent=t('予約対象を最大10件選んでください。My Plan内の時間重複を確認できますが、AWSが最終判定します。');next.textContent=ui`${t('選択内容を確認')}（${state.reservationSelection.size}/10）`;next.hidden=false;next.disabled=state.reservationSelection.size===0;back.textContent=t('閉じる');
- }
+  return sortSessions([...items.values()]);
+};
+const currentPlanKey = () =>
+  state.source === 'demo'
+    ? PLAN_KEY
+    : state.source === 'live' && state.accountId
+      ? ui`${PLAN_KEY}:aws:reinvent2026:${state.accountId}`
+      : null;
+const googleSelectionKey = () => ui`reinvent-google-selected:${currentPlanKey() || 'demo'}`;
+function readGoogleSelection() {
+  try {
+    const raw = storage.getItem(googleSelectionKey()),
+      ids = raw ? JSON.parse(raw) : [];
+    return Array.isArray(ids) ? [...new Set(ids.filter((id) => typeof id === 'string'))] : [];
+  } catch {
+    return [];
+  }
 }
-function reservationFailureLabel(code){const labels={sessionNotReservable:'AWS API上で予約対象外',scheduleConflict:'予約時間が他の予定と重複',alreadyScheduled:'すでに予約済み',sessionFull:'満席',insufficientAccess:'予約権限がありません',timePassed:'セッション開始後',alreadyFavorited:'お気に入り登録済み',notFavorited:'お気に入り登録されていません',RESERVATIONS_CLOSED_OR_CONFLICT:'予約・解除の受付時間外です。AWSの案内を確認してください。',RATE_LIMITED:'AWS側で一時的な上限に達しました。時間をおいてください。',EVENT_REGISTRATION_REQUIRED:'AWS re:Inventへの登録が必要です。',SIGN_IN_REQUIRED:'AWSへサインインしてください。',CANCELLATION_FAILED:'CANCELLATION_FAILED',other:'AWSが予約を受け付けませんでした'};return t(labels[code]||'AWSが予約を受け付けませんでした');}
-async function openReservationDialog(mode='reserve'){if(state.source!=='live'||!state.localApiAvailable||!state.accountId)return;try{if(!await refreshAwsSchedule({force:true}))throw new Error('AWS_SCHEDULE_UNAVAILABLE');state.reservationSelection=new Set();state.reservationResults=null;state.reservationMode=mode;state.reservationStage='select';render();renderReservationDialog();openDialog('reservationDialog');}catch{notify(t('AWS Scheduleを取得できませんでした。予約前に状態を確認してください。'));}}
-async function submitReservationBatch(){const ids=[...state.reservationSelection];if(!ids.length||ids.length>10)return;const button=$('#reservationNext');button.disabled=true;state.reservationBusy=true;try{state.reservationResults=await reserveLiveSessions(ids);if(state.reservationResults.scheduleConfirmed){state.awsReserved=new Set([...state.awsReserved,...(state.reservationResults.successful||[])]);state.awsScheduleFetchedAt=Date.now();state.awsScheduleStatus='ready';}for(const item of state.sessions)if(item.uiState)item.uiState.attendance=state.awsReserved.has(item.id)?'reserved':'none';state.reservationStage='results';renderReservationDialog();render();}catch(error){const messages={RESERVATIONS_CLOSED_OR_CONFLICT:'予約受付期間外か、AWS Scheduleが更新されています。Scheduleを更新して確認してください。',SESSION_ALREADY_RESERVED:'AWS Scheduleに予約済みのセッションがあります。Scheduleを更新してください。',SIGN_IN_REQUIRED:'AWSへサインインしてください。',EVENT_REGISTRATION_REQUIRED:'AWS re:Inventへの登録が必要です。',RATE_LIMITED:'AWS側で一時的な上限に達しました。時間をおいてください。',RESERVATION_OUTCOME_UNKNOWN:'結果を確認できませんでした。再送せず、AWS Scheduleを確認してください。',SESSION_NOT_RESERVABLE:'予約対象外のセッションが含まれています。AWSカタログを更新してください。'};notify(t(messages[error.message]||'AWSへ予約を送信できませんでした。'));}finally{state.reservationBusy=false;button.disabled=false;}}
-async function submitReservationCancellations(){const ids=[...state.reservationSelection];if(!ids.length||ids.length>10)return;const button=$('#reservationNext');button.disabled=true;state.reservationBusy=true;try{state.reservationResults=await cancelLiveReservations(ids);if(state.reservationResults.scheduleConfirmed){state.awsReserved=new Set(state.reservationResults.reserved||[...state.awsReserved].filter(id=>!state.reservationResults.cancelled.includes(id)));state.awsScheduleFetchedAt=Date.now();state.awsScheduleStatus='ready';}for(const item of state.sessions)if(item.uiState)item.uiState.attendance=state.awsReserved.has(item.id)?'reserved':'none';state.reservationStage='results';renderReservationDialog();render();}catch(error){const messages={SIGN_IN_REQUIRED:'AWSへサインインしてください。',EVENT_REGISTRATION_REQUIRED:'AWS re:Inventへの登録が必要です。',RESERVATIONS_CLOSED_OR_CONFLICT:'予約・解除の受付時間外です。AWSの案内を確認してください。',RATE_LIMITED:'AWS側で一時的な上限に達しました。時間をおいてください。'};notify(t(messages[error.message]||'AWSへ予約解除を送信できませんでした。'));}finally{state.reservationBusy=false;button.disabled=false;}}
-function render(){const items=plannerItems(),map=conflictMap(items);renderKindSwitch();renderQuick();renderApplied();renderTray();renderExplore(map);renderPlan(items,map);renderGooglePanel(items);renderGoogleResults();$('#recommendations').innerHTML=state.source==='live'?renderRecommendations([...getRecommendations(state.sessions,{plan:items}),...getNewsRecommendations(state.sessions,state.recommendationNews,{plan:items})],new Set(state.plan),state.recommendationInterests,getPersonalizedRecommendations(state.sessions,{interests:state.recommendationInterests,plan:items}),state.recommendationNews):'';$('#recommendations').querySelectorAll('[data-interest]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.interest;state.recommendationInterests=state.recommendationInterests.includes(id)?state.recommendationInterests.filter(value=>value!==id):[...state.recommendationInterests,id];try{storage.setItem('reinvent-recommendation-interests',JSON.stringify(state.recommendationInterests));}catch{}render();}));renderNavigation();renderSourceInfo();$('#storageWarning').hidden=!state.warning;$('#storageWarning').textContent=t(state.warning);}
-function commitSearch({push=true}={}){clearTimeout(searchTimer);displayLimit=40;syncURL(push);render();}
-function resetFilters(includeQuery=false){state.filters={...defaultFilters(),levelDefaultSuppressed:true,query:includeQuery?'':state.filters.query};$('#q').value=state.filters.query;commitSearch();}
-function setExploreKind(kind){state.exploreKind=kind;buildFacets();commitSearch();}
-function renderCurrentDetail(){const item=byId(state.detailId);if(item){$('#detailContent').innerHTML=renderDetail(item,new Set(state.plan),conflictMap(plannerItems()),state.detailTranslations.get(item.id)||{status:'idle',text:''});const button=$('#detailContent [data-translate-detail]');button?.addEventListener('click',()=>void translateDetail(button.dataset.translateDetail));}}
-function savePlan(){const key=currentPlanKey();state.warning=key?writePlan(storage,state.plan,key):t('サインイン後にアカウント別のLocal Planへ保存できます。');render();if(state.detailId&&byId(state.detailId))renderCurrentDetail();if($('#compareDialog').open)$('#compareContent').innerHTML=renderComparison(state.comparison.map(byId).filter(Boolean),new Set(state.plan),conflictMap(plannerItems()));}
-function setPlan(id,included){const item=byId(id);if(!item)throw new Error('Unknown session');if(item.itemType==='personalTime')throw new Error('AWS personal time is read-only');state.plan=included?[...new Set([...state.plan,id])]:state.plan.filter(x=>x!==id);savePlan();notify(included?t('My Planに追加しました（予約ではありません）'):t('My Planから削除しました'));}
-function openPersonalTime(item=null){editingPersonalTimeId=item?.personalTimeId||'';$('#personalTimeHeading').textContent=t(editingPersonalTimeId?'AWS個人予定を編集':'AWS個人予定を追加');$('#personalTimeDelete').hidden=!editingPersonalTimeId;$('#personalTimeError').hidden=true;$('#personalTimeForm').reset();$('#personalTimeTitle').value=item?.title||'';$('#personalTimeDescription').value=item?.abstract||'';$('#personalTimeLocation').value=item?.venue||'';$('#personalTimeDate').value=item?.date||(['all','unknown'].includes(state.planDate)?venueToday():state.planDate||venueToday());$('#personalTimeStart').value=item?.startTime||'12:00';$('#personalTimeEnd').value=item?.endTime||'13:00';openDialog('personalTimeDialog');}
-function openPersonalTimeDelete(personalTimeId){const item=state.awsPersonalTimes.find(value=>value.personalTimeId===personalTimeId);if(!item)return;editingPersonalTimeId=personalTimeId;$('#personalTimeDeleteName').textContent=item.title;openDialog('personalTimeDeleteDialog');}
-function personalTimeInput(action){const date=$('#personalTimeDate').value,start=venueLocalDateTimeToUtc(date,$('#personalTimeStart').value),end=venueLocalDateTimeToUtc(date,$('#personalTimeEnd').value);if(!start||!end)return null;const duration=(Date.parse(`${end}Z`)-Date.parse(`${start}Z`))/60000;if(duration<=0||duration%5!==0)return null;return {action,personalTimeId:editingPersonalTimeId,title:$('#personalTimeTitle').value.trim(),description:$('#personalTimeDescription').value.trim(),startDateTime:start,endDateTime:end,location:$('#personalTimeLocation').value.trim()};}
-async function submitPersonalTime(event){event.preventDefault();const payload=personalTimeInput(editingPersonalTimeId?'update':'create');if(!payload){$('#personalTimeError').textContent=t('開始・終了時刻は会場時間で入力し、5分単位の正しい範囲を指定してください。');$('#personalTimeError').hidden=false;return;}const button=$('#personalTimeSave');button.disabled=true;try{const result=await saveLivePersonalTime(payload);if(!result.confirmed){await refreshAwsSchedule({force:true});notify(t('AWS Scheduleで結果を確認できませんでした。再送せず、Scheduleを確認してください。'));return;}$('#personalTimeDialog').close();await refreshAwsSchedule({force:true});notify(t(editingPersonalTimeId?'AWS個人予定を更新しました':'AWS個人予定を追加しました'));}catch(error){const message={SIGN_IN_REQUIRED:'AWSへサインインしてください。',EVENT_REGISTRATION_REQUIRED:'AWS re:Inventへの登録が必要です。',RATE_LIMITED:'AWS側で一時的な上限に達しました。時間をおいてください。',PERSONAL_TIME_FIELDS_INVALID:'タイトル・説明・場所の長さを確認してください。',PERSONAL_TIME_DATETIME_INVALID:'日付と時刻を確認してください。',PERSONAL_TIME_INTERVAL_INVALID:'終了は開始より後の5分単位にしてください。',AWS_OPERATION_CLOSED:'AWS個人予定の変更は現在受け付けられていません。',PERSONAL_TIME_REJECTED:'AWSが個人予定を受け付けませんでした。'};$('#personalTimeError').textContent=t(message[error.message]||'AWS個人予定を保存できませんでした。');$('#personalTimeError').hidden=false;}finally{button.disabled=false;}}
-async function deletePersonalTime(){const id=editingPersonalTimeId;if(!id)return;const button=$('#confirmPersonalTimeDelete');button.disabled=true;try{const result=await saveLivePersonalTime({action:'delete',personalTimeId:id});$('#personalTimeDeleteDialog').close();if(!result.confirmed){await refreshAwsSchedule({force:true});notify(t('AWS Scheduleで削除を確認できませんでした。再実行せず、Scheduleを確認してください。'));return;}if($('#personalTimeDialog').open)$('#personalTimeDialog').close();await refreshAwsSchedule({force:true});notify(t('AWS個人予定を削除しました'));}catch(error){notify(t(error.message==='SIGN_IN_REQUIRED'?'AWSへサインインしてください。':'AWS個人予定を削除できませんでした。'));}finally{button.disabled=false;}}
-function openDialog(id){const d=$('#'+id);if(!d.open)d.showModal();}
-function openDetail(id){const s=byId(id);if(!s)return;state.detailId=id;renderCurrentDetail();openDialog('detailDialog');}
-async function translateDetail(id){const item=byId(id);if(!item?.abstract||state.detailId!==id)return;state.detailTranslations.set(id,{status:'loading',text:''});renderCurrentDetail();try{const text=await translateSessionToJapanese(item.title,item.abstract);state.detailTranslations.set(id,{status:'ready',text});}catch{state.detailTranslations.set(id,{status:'error',text:''});}if(state.detailId===id)renderCurrentDetail();}
-function toggleCompare(id){if(!byId(id))return;if(state.compare.includes(id))state.compare=state.compare.filter(x=>x!==id);else if(state.compare.length<3)state.compare.push(id);else{notify(t('比較は同時に3件までです'));return;}render();}
-function openCompare(ids){state.comparison=[...new Set(ids)].filter(id=>byId(id)).slice(0,3);if(state.comparison.length<2)return;$('#compareContent').innerHTML=renderComparison(state.comparison.map(byId),new Set(state.plan),conflictMap(plannerItems()));openDialog('compareDialog');}
-function findGap(date,from,to){state.exploreKind="sessions";state.filters={...defaultFilters(),date:[date],from,to:to==='24:00'?'':to,fit:'contained'};$('#q').value='';commitSearch();changeActive('explore',{restore:false});notify(t('空き時間の枠内に収まるセッションを表示しています'));}
-function buildFacets(){const source=state.exploreKind==="sideEvents"?state.sideEvents:state.sessions;for(const key of MULTI_KEYS){const field={topic:'topics',service:'services',speaker:'speakers'}[key]||key;facets[key]=[...new Set(source.flatMap(s=>Array.isArray(s[field])?s[field]:[s[field]]).filter(Boolean))].sort();}}
-function renderFacetOptions(key,query=''){const selected=state.draft[key],all=[...new Set([...selected,...facets[key]])];const values=all.filter(v=>v.toLocaleLowerCase().includes(query.toLocaleLowerCase()));const visible=values.slice(0,100);return visible.map(value=>ui`<label class="facet-option"><input type="checkbox" data-facet="${key}" value="${esc(value)}" ${selected.includes(value)?'checked':''}><span>${esc(key==='date'?dateLabel(value):value)}</span></label>`).join('')+(values.length>100?t('<p class="hint">先頭100件を表示。検索して絞り込んでください。</p>'):'')+(!values.length?t('<p class="facet-empty">該当する値はありません。</p>'):'');}
-function openFilters({preserveDraft=false}={}){const draftFrom=$('#from').value,draftTo=$('#to').value,draftFit=$('#fitContained').checked;if(!preserveDraft||!state.draft)state.draft=structuredClone(state.filters);const renderFacet=key=>ui`<fieldset class="facet-group"><legend>${t(FACET_LABELS[key])}</legend>${facets[key]?.length>12?ui`<input class="facet-search" type="search" data-facet-search="${key}" aria-label="${t(FACET_LABELS[key])}の候補を検索" placeholder="${t(FACET_LABELS[key])}を検索">`:''}<div class="facet-options" id="facet-${key}">${renderFacetOptions(key)}</div></fieldset>`;$('#dateFacet').innerHTML=renderFacet('date');$('#facetFields').innerHTML=['sessionType','level','track','topic','service','venue','speaker'].map(renderFacet).join('');$('#from').value=preserveDraft?draftFrom:state.filters.from;$('#to').value=preserveDraft?draftTo:state.filters.to;$('#fitContained').checked=preserveDraft?draftFit:state.filters.fit==='contained';if(!preserveDraft)$('#timeError').hidden=true;openDialog('filterDialog');}
-function applySessions(sessions){state.sessions=sessions;for(const item of sessions)if(item.uiState){item.uiState.attendance=state.awsReserved.has(item.id)?'reserved':'none';item.uiState.favorite=state.awsFavorites.has(item.id);}const all=[...sessions,...state.sideEvents,...state.awsPersonalTimes];state.byId=new Map(all.map(s=>[s.id,s]));state.catalog=createCatalog(sessions);state.sideEventCatalog=createCatalog(state.sideEvents);buildFacets();}
-async function refreshAwsSchedule({force=false}={}){if(state.source!=='live'||!state.localApiAvailable||!state.accountId)return false;if(scheduleRefreshPromise)return scheduleRefreshPromise;if(!force&&state.awsScheduleFetchedAt&&Date.now()-state.awsScheduleFetchedAt<60000)return true;const accountId=state.accountId;state.awsScheduleStatus='loading';render();scheduleRefreshPromise=(async()=>{try{const response=await fetchLiveSchedule(),reserved=response.schedule?.reserved,favorites=response.schedule?.favorites,personalTime=response.schedule?.personalTime;if(!Array.isArray(reserved)||!Array.isArray(favorites)||!Array.isArray(personalTime))throw new Error('AWS_RESPONSE_INVALID');if(state.source!=='live'||state.accountId!==accountId)return false;state.awsReserved=new Set(reserved.filter(id=>typeof id==='string'));state.awsFavorites=new Set(favorites.filter(id=>typeof id==='string'));state.awsPersonalTimes=adaptAwsPersonalTimes(personalTime);state.awsScheduleFetchedAt=Date.now();state.awsScheduleStatus='ready';for(const item of state.sessions)if(item.uiState){item.uiState.attendance=state.awsReserved.has(item.id)?'reserved':'none';item.uiState.favorite=state.awsFavorites.has(item.id);}applySessions(state.sessions);render();return true;}catch{if(state.source==='live'&&state.accountId===accountId){state.awsScheduleStatus='error';render();}return false;}finally{scheduleRefreshPromise=null;}})();return scheduleRefreshPromise;}
-async function refreshRecommendationNews(){if(state.source!=='live'||!state.localApiAvailable)return;try{const response=await fetchRecommendationNews();state.recommendationNews=response;clearTimeout(newsPollTimer);const delay=response.refreshing?1800:response.error?30*60*1000:response.fetchedAt?Math.max(60_000,6*60*60*1000-(Date.now()-response.fetchedAt*1000)):null;if(delay!==null)newsPollTimer=setTimeout(refreshRecommendationNews,delay);render();}catch{}}
-function scheduleLivePoll(seq){clearTimeout(livePollTimer);livePollTimer=setTimeout(async()=>{if(seq!==sequence||state.source!=='live')return;try{const snapshot=await fetchLiveCatalog();if(seq!==sequence)return;state.catalogMeta=snapshot;applySessions(snapshot.sessions);state.status=snapshot.error&&!snapshot.sessions.length?'error':snapshot.refreshing&&!snapshot.sessions.length?'loading':'ready';render();if(snapshot.refreshing||(!snapshot.complete&&!snapshot.error))scheduleLivePoll(seq);}catch(error){if(seq!==sequence)return;state.status=error.status===401?'unauthenticated':'error';render();}},700);}
-async function load(){controller?.abort();clearTimeout(livePollTimer);clearTimeout(newsPollTimer);const activeController=new AbortController();controller=activeController;const seq=++sequence;state.status='loading';state.catalogMeta=null;render();const timer=setTimeout(()=>activeController.abort(),15000);try{if(state.source==='demo'){const sessions=await sessionRepository.listSessions({signal:activeController.signal});if(seq!==sequence)return;state.catalogMeta={complete:true,refreshing:false,pages:1,totalCount:sessions.length,fetchedAt:null};applySessions(sessions);state.status='ready';render();}else{void refreshRecommendationNews();const snapshot=await fetchLiveCatalog({signal:activeController.signal});if(seq!==sequence)return;state.catalogMeta=snapshot;applySessions(snapshot.sessions);state.status=snapshot.error&&!snapshot.sessions.length?'error':snapshot.refreshing&&!snapshot.sessions.length?'loading':'ready';render();if(snapshot.refreshing||(!snapshot.complete&&!snapshot.error))scheduleLivePoll(seq);}}catch(error){if(seq!==sequence)return;state.status=state.source==='live'&&error.status===401?'unauthenticated':'error';render();}finally{clearTimeout(timer);}}
-function switchSource(source,accountId=state.accountId){if(source!==runtimeMode)return;const oldKey=currentPlanKey();state.source=source;state.accountId=source==='live'?accountId:'';state.awsReserved=new Set();state.awsFavorites=new Set();state.awsPersonalTimes=[];state.awsScheduleStatus='idle';state.awsScheduleFetchedAt=0;const nextKey=currentPlanKey();if(oldKey!==nextKey){const plan=nextKey?readPlan(storage,nextKey):{ids:[],warning:''};state.plan=plan.ids;state.warning=plan.warning;state.googleSelected=readGoogleSelection();state.googleResult={};}state.planDate='';load();}
-async function initialize(){
- try{state.sideEvents=await sideEventRepository.listSideEvents();}catch{}
- applySessions([]);
- if(runtimeMode==='live'){
-  state.source='live';state.plan=[];state.warning='';
-  try{
-   const session=await localSessionStatus();state.localApiAvailable=true;
-   if(session.authenticated&&session.accountId){state.accountId=session.accountId;const plan=readPlan(storage,currentPlanKey());state.plan=plan.ids;state.warning=plan.warning;void refreshAwsSchedule();}
-   state.googleSelected=readGoogleSelection();
-   try{state.googleStatus=await googleCalendarStatus();}catch{state.googleStatus={configured:false,connected:false,calendarReady:false,syncedItemIds:[]};}
-  }catch{state.localApiAvailable=false;}
- }else{state.source='demo';state.plan=saved.ids;state.warning=saved.warning;}
- syncURL(false);render();load();
+function saveGoogleSelection() {
+  try {
+    storage.setItem(googleSelectionKey(), JSON.stringify(state.googleSelected));
+  } catch {}
 }
-async function beginSignIn(){try{const url=await startBuilderIdSignIn();window.location.assign(url);}catch{notify(t('サインインを開始できませんでした。Local serverの状態を確認してください。'));}}
-async function refreshGoogleStatus(){if(!state.localApiAvailable)return;try{state.googleStatus=await googleCalendarStatus();}catch{state.googleStatus={configured:false,connected:false,calendarReady:false,syncedItemIds:[]};}render();}
-async function saveGoogleClient(){const button=$('#saveGoogleClient'),clientId=$('#googleClientId').value.trim();button.disabled=true;try{await configureGoogleCalendar(clientId);$('#googleSetupDialog').close();notify(t('Google OAuth client IDをKeychainへ保存しました'));await refreshGoogleStatus();}catch(error){notify(error.message==='GOOGLE_DISCONNECT_BEFORE_RECONFIGURE'?t('接続中のGoogleアカウントがあるため、再設定できません。'):t('client IDを保存できませんでした。形式とKeychainを確認してください。'));}finally{button.disabled=false;}}
-async function beginGoogleConnect(){try{await connectGoogleCalendar();notify(t('Googleの同意画面を既定のブラウザーで開きました'));}catch(error){notify(error.message==='GOOGLE_CLIENT_ID_REQUIRED'?t('先にGoogle OAuth client IDを設定してください。'):t('Google接続を開始できませんでした。'));}}
-function openGoogleSyncConfirmation(){const selected=plannerItems().filter(item=>state.googleSelected.includes(item.id)&&validInterval(item));if(!selected.length){notify(t('日時が確定した候補を選択してください。'));return;}$('#googleSyncPreview').innerHTML=selected.map(item=>ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`).join('');openDialog('googleSyncDialog');}
-async function confirmGoogleSync(){const button=$('#confirmGoogleSync'),items=plannerItems().filter(item=>state.googleSelected.includes(item.id)&&validInterval(item));if(!items.length)return;button.disabled=true;try{const payload=items.map(item=>({itemId:item.id,title:item.title,description:[item.abstract,item.code?ui`Session: ${item.code}`:'',item.sourceUrl||''].filter(Boolean).join('\n'),location:[item.venue,item.room].filter(Boolean).join(' · '),start:calendarInstant(item.date,item.startTime),end:calendarInstant(item.date,item.endTime)}));if(payload.some(item=>!item.start||!item.end))throw new Error('TIME_UNAVAILABLE');const result=await syncGoogleCalendar(payload);for(const row of result.results||[]){if(row.status==='failed')state.googleResult[row.itemId]=row.error||'GOOGLE_SYNC_FAILED';else delete state.googleResult[row.itemId];}renderGoogleResults();$('#googleSyncDialog').close();await refreshGoogleStatus();notify(ui`${result.synced}件を同期しました${result.failed?ui` · ${result.failed}件は失敗。選択を保ったまま再試行できます`:''}`);}catch(error){notify(error.message==='TIME_UNAVAILABLE'?t('会場時刻を変換できない予定があります。Googleへ同期できません。認証・通信・Calendar API設定を確認してください。'):t('Google Calendarへ同期できませんでした。認証・通信・Calendar API設定を確認してください。'));}finally{button.disabled=false;}}
-function openGoogleRemoveConfirmation(id){const item=byId(id);if(!item||!state.googleStatus.syncedItemIds?.includes(id))return;state.pendingGoogleRemove=id;$('#googleRemovePreview').innerHTML=ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(timeLabel(item))}</li>`;openDialog('googleRemoveDialog');}
-async function confirmGoogleRemove(){const button=$('#confirmGoogleRemove'),id=state.pendingGoogleRemove;if(!id)return;button.disabled=true;try{const result=await removeGoogleCalendarItems([id]);if(result.results?.[0]?.status==='removed')delete state.googleResult[id];else if(result.results?.[0]?.status==='failed')state.googleResult[id]=result.results[0].error||'GOOGLE_DELETE_FAILED';renderGoogleResults();$('#googleRemoveDialog').close();await refreshGoogleStatus();notify(result.removed?t('Google Calendarから同期予定を削除しました'):t('Google Calendar予定を削除できませんでした。再試行してください。'));}catch{notify(t('Google Calendarから削除できませんでした。認証・通信状態を確認してください。'));}finally{button.disabled=false;state.pendingGoogleRemove=null;}}
-function clearSignedInAccount(){controller?.abort();sequence++;clearTimeout(livePollTimer);clearTimeout(newsPollTimer);state.accountId='';state.plan=[];state.warning='';state.googleSelected=[];state.googleResult={};state.awsReserved=new Set();state.awsFavorites=new Set();state.awsPersonalTimes=[];state.awsScheduleStatus='idle';state.awsScheduleFetchedAt=0;state.catalogMeta=null;state.sessions=[];state.catalog=createCatalog([]);state.byId=new Map(state.sideEvents.map(item=>[item.id,item]));state.status='unauthenticated';state.planDate='';state.reservationSelection=new Set();state.reservationResults=null;state.reservationStage='select';}
-function openAwsSignOut(){openDialog('awsSignOutDialog');}
-async function signOutAppOnly(){const button=$('#signOutAppOnly');button.disabled=true;try{await signOutAws();clearSignedInAccount();$('#awsSignOutDialog').close();render();notify(t('このアプリからサインアウトしました。Builder IDのブラウザーセッションは維持しています。'));}catch{notify(t('AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。'));}finally{button.disabled=false;}}
-async function switchBuilderId(){const button=$('#switchBuilderId');button.disabled=true;try{const url=await signOutBuilderId();$('#awsSignOutDialog').close();if(typeof url==='string')window.location.assign(url);}catch{notify(t('AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。'));}finally{button.disabled=false;}}
-async function refreshLive(){try{await Promise.all([requestCatalogRefresh(),refreshAwsSchedule({force:true})]);state.status=state.sessions.length?'ready':'loading';render();scheduleLivePoll(sequence);}catch(error){notify(error.message==='SIGN_IN_REQUIRED'?t('AWSへサインインしてください。'):t('AWSカタログを更新できませんでした。'));}}
-$('#q').value=state.filters.query;
-$('#languageSwitch').addEventListener('change',()=>{
- setLanguage($('#languageSwitch').value,storage);applyStaticLanguage();render();
- if(state.detailId&&byId(state.detailId))renderCurrentDetail();
- if($('#compareDialog').open)$('#compareContent').innerHTML=renderComparison(state.comparison.map(byId).filter(Boolean),new Set(state.plan),conflictMap(plannerItems()));
- if($('#filterDialog').open)openFilters({preserveDraft:true});
- if($('#googleSyncDialog').open)openGoogleSyncConfirmation();
- if($('#googleRemoveDialog').open)openGoogleRemoveConfirmation(state.pendingGoogleRemove);
- if($('#reservationDialog').open)renderReservationDialog();
- $('#toast').hidden=true;
+let controller,
+  sequence = 0,
+  toastTimer,
+  searchTimer,
+  livePollTimer,
+  newsPollTimer,
+  displayLimit = 40,
+  facets = {},
+  exploreScroll = 0,
+  scheduleRefreshPromise = null,
+  editingPersonalTimeId = '';
+const tomorrow = () => {
+  const d = new Date(ui`${venueToday()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+const quickDefinitions = () => [
+  { label: 'Today', key: 'date', value: venueToday() },
+  { label: 'Tomorrow', key: 'date', value: tomorrow() },
+  { label: 'AI / ML', key: 'track', value: 'AI / ML', separator: true },
+  { label: 'Generative AI', key: 'topic', value: 'Generative AI' },
+  { label: 'Architecture', key: 'topic', value: 'Architecture' },
+  { label: 'Serverless', key: 'topic', value: 'Serverless' },
+  { label: 'Containers', key: 'topic', value: 'Containers' },
+  { label: 'Security', key: 'track', value: 'Security' },
+  { label: 'Database', key: 'track', value: 'Databases' },
+  { label: 'SaaS', key: 'track', value: 'SaaS' },
+  { label: 'Developer Tools', key: 'track', value: 'Developer Tools' },
+  { label: 'Level 200+', key: 'minLevel', value: 200, separator: true },
+  { label: t('レベル未設定'), key: 'includeUnleveled', value: true },
+  ...[200, 300, 400, 500].map((n, i) => ({
+    label: 'Level ' + n,
+    key: 'level',
+    value: String(n),
+    separator: i === 0,
+  })),
+  ...['Breakout session', 'Chalk talk', 'Workshop', 'Builders’ session'].map((v, i) => ({
+    label: ['Breakout', 'Chalk Talk', 'Workshop', "Builders' Session"][i],
+    key: 'sessionType',
+    value: v,
+    separator: i === 0,
+  })),
+];
+function notify(message) {
+  $('#toast').textContent = message;
+  $('#toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ($('#toast').hidden = true), 2800);
+}
+function syncURL(push = false) {
+  const url = searchURL(window.location.href, {
+    filters: state.filters,
+    view: state.view,
+    sort: state.sort,
+    kind: state.exploreKind,
+  });
+  if (url.href !== window.location.href) {
+    try {
+      window.history[push ? 'pushState' : 'replaceState'](null, '', url.href);
+    } catch {}
+  }
+}
+function results() {
+  if (state.exploreKind === 'sideEvents')
+    return state.sideEventCatalog.search(state.filters, state.sort);
+  const sessions = state.catalog.search(state.filters, state.sort);
+  return state.exploreKind === 'favorites'
+    ? sessions.filter((item) => state.awsFavorites.has(item.id))
+    : sessions;
+}
+function quickPressed(d) {
+  if (d.key === 'minLevel')
+    return Number.isFinite(state.filters.minLevel) && state.filters.minLevel === Number(d.value);
+  if (d.key === 'includeUnleveled') return state.filters.includeUnleveled;
+  return state.filters[d.key].includes(d.value);
+}
+function renderQuick() {
+  const defs = state.exploreKind === 'sideEvents' ? [] : quickDefinitions();
+  $('#quickFilters').innerHTML = defs
+    .map(
+      (d) =>
+        ui`${d.separator ? '<span class="quick-divider" aria-hidden="true"></span>' : ''}<button class="quick-chip" data-quick-key="${d.key}" data-quick-value="${esc(d.value)}" aria-pressed="${quickPressed(d)}">${t(d.label)}</button>`,
+    )
+    .join('');
+}
+function renderApplied() {
+  const chips = [];
+  let count = 0;
+  for (const key of MULTI_KEYS)
+    for (const value of state.filters[key]) {
+      count++;
+      chips.push(
+        ui`<button class="filter-chip" data-remove-filter="${key}" data-filter-value="${esc(value)}" aria-label="${t(FACET_LABELS[key])} ${esc(value)}を解除">${t(FACET_LABELS[key])}: ${esc(key === 'date' ? dateLabel(value) : value)} <span aria-hidden="true">×</span></button>`,
+      );
+    }
+  if (Number.isFinite(state.filters.minLevel)) {
+    count++;
+    chips.push(
+      ui`<button class="filter-chip" data-remove-filter="minLevel" aria-label="Level ${state.filters.minLevel}以上を解除">Level ${state.filters.minLevel}以上 <span aria-hidden="true">×</span></button>`,
+    );
+  }
+  if (state.filters.includeUnleveled) {
+    count++;
+    chips.push(
+      t(
+        '<button class="filter-chip" data-remove-filter="includeUnleveled" aria-label="レベル未設定を解除">レベル未設定 <span aria-hidden="true">×</span></button>',
+      ),
+    );
+  }
+  if (state.filters.from || state.filters.to) {
+    count++;
+    chips.push(
+      ui`<button class="filter-chip" data-remove-filter="time" aria-label="時間の条件を解除">${state.filters.fit === 'contained' ? t('枠内') : 'Time'}: ${esc(state.filters.from || '00:00')}–${esc(state.filters.to || '24:00')} <span aria-hidden="true">×</span></button>`,
+    );
+  }
+  $('#activeFilters').innerHTML =
+    chips.join('') +
+    (chips.length
+      ? ui`<button class="quiet small" data-action="resetFilters">Clear all</button>`
+      : '');
+  $('#filterCount').textContent = count;
+  $('#filterCount').hidden = !count;
+  $('#clearSearch').hidden = !state.filters.query;
+}
+function renderTray() {
+  const items = state.compare.map(byId).filter(Boolean);
+  $('#compareTray').hidden = !items.length;
+  $('#compareTray').innerHTML =
+    ui`<span>${items.length} / 3件を比較対象に選択 · ${items.map((s) => esc(s.code || s.title)).join(' / ')}</span><button class="primary small" data-action="compareSelected" ${items.length < 2 ? 'disabled' : ''}>Compare</button><button class="quiet small" data-action="clearCompare">解除</button>`;
+}
+function renderExplore(map) {
+  const found = results(),
+    plan = new Set(state.plan),
+    sideMode = state.exploreKind === 'sideEvents',
+    favoriteMode = state.exploreKind === 'favorites';
+  $('#resultCount').textContent = sideMode
+    ? ui`${found.length.toLocaleString(getLocale())} side events`
+    : state.status === 'loading'
+      ? t('読み込み中')
+      : state.status === 'error'
+        ? t('取得できませんでした')
+        : state.status === 'unauthenticated'
+          ? t('サインインが必要です')
+          : favoriteMode
+            ? ui`${found.length.toLocaleString(getLocale())} ${t('AWSお気に入り')}`
+            : ui`${found.length.toLocaleString(getLocale())} sessions`;
+  $('#cards').setAttribute('aria-busy', String(!sideMode && state.status === 'loading'));
+  if (sideMode && !state.sideEvents.length)
+    $('#cards').innerHTML = blank(
+      t('掲載中のサイドイベントはありません'),
+      t('公式情報が確認できたイベントを追加します。'),
+    );
+  else if (sideMode && !found.length)
+    $('#cards').innerHTML = blank(
+      t('一致するイベントがありません'),
+      t('キーワードやFilterを少し減らしてお試しください。'),
+      t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'),
+    );
+  else if (sideMode) {
+    const subset = found.slice(0, displayLimit);
+    $('#cards').innerHTML =
+      (state.view === 'compact'
+        ? renderCompact(subset, plan, map, state.compare)
+        : subset.map((s) => renderCard(s, plan, map, state.compare)).join('')) +
+      (found.length > displayLimit
+        ? ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length - displayLimit}件）</button>`
+        : '');
+  } else if (state.status === 'loading')
+    $('#cards').innerHTML =
+      '<div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div>';
+  else if (state.status === 'unauthenticated')
+    $('#cards').innerHTML = blank(
+      t('AWS Builder IDでサインインしてください'),
+      t('AWSの実カタログを読むには、イベント登録済みのアカウントが必要です。'),
+      '<button data-action="signIn" class="primary">Builder ID sign-in</button>',
+    );
+  else if (state.status === 'error')
+    $('#cards').innerHTML = blank(
+      t('セッションを取得できませんでした'),
+      t('通信状態を確認して、もう一度お試しください。'),
+      t('<button data-action="retry" class="primary">再試行</button>'),
+    );
+  else if (!state.sessions.length)
+    $('#cards').innerHTML = blank(
+      state.source === 'live'
+        ? t('AWSカタログを取得しています')
+        : t('セッションデータがまだありません'),
+      state.source === 'live'
+        ? t('最初のページを受信すると、続きの取得中も結果を表示します。')
+        : t('データが公開されると、ここに表示されます。'),
+      t('<button data-action="retry" class="quiet">再読み込み</button>'),
+    );
+  else if (!found.length)
+    $('#cards').innerHTML = favoriteMode
+      ? blank(
+          t('AWSお気に入りはありません'),
+          t('AWS側でお気に入りにしたセッションが、Scheduleの更新後にここへ表示されます。'),
+        )
+      : blank(
+          t('一致するセッションがありません'),
+          t('キーワードやFilterを少し減らしてお試しください。'),
+          t('<button data-action="resetAll" class="quiet">検索とFilterをクリア</button>'),
+        );
+  else {
+    const subset = found.slice(0, displayLimit);
+    $('#cards').innerHTML =
+      (state.view === 'compact'
+        ? renderCompact(subset, plan, map, state.compare)
+        : subset.map((s) => renderCard(s, plan, map, state.compare)).join('')) +
+      (found.length > displayLimit
+        ? ui`<button class="quiet" data-action="more">さらに40件を表示（残り${found.length - displayLimit}件）</button>`
+        : '');
+  }
+  for (const [id, value] of [
+    ['cardView', 'card'],
+    ['compactView', 'compact'],
+  ]) {
+    $('#' + id).classList.toggle('selected', state.view === value);
+    $('#' + id).setAttribute('aria-pressed', String(state.view === value));
+  }
+  $('#sort').value = state.sort;
+}
+function renderPlan(items, map) {
+  const conflicted = items.filter((s) => map.get(s.id)?.length),
+    dates = [
+      ...new Set([...state.sessions, ...state.sideEvents].map((s) => s.date).filter(Boolean)),
+    ].sort();
+  if (!state.planDate && state.status === 'ready') {
+    const plannedDates = [...new Set(items.map((s) => s.date).filter(Boolean))].sort();
+    state.planDate =
+      plannedDates.find((date) => date >= venueToday()) ||
+      plannedDates.at(-1) ||
+      (dates.includes(venueToday()) ? venueToday() : dates[0] || '');
+  }
+  const allDates = [
+    ...new Set([
+      ...dates,
+      ...(state.planDate && !['all', 'unknown'].includes(state.planDate) ? [state.planDate] : []),
+    ]),
+  ].sort();
+  $('#planDate').innerHTML =
+    allDates
+      .map(
+        (date) =>
+          ui`<option value="${date}">${esc(dateLabel(date))}${date === venueToday() ? t(' · 今日') : ''}</option>`,
+      )
+      .join('') +
+    t('<option value="all">すべての日付</option><option value="unknown">日付未定</option>');
+  $('#planDate').value = state.planDate;
+  $('#clearPlan').disabled = !state.plan.length;
+  $('#exportCalendar').disabled = !items.some(validInterval);
+  const reservationAvailable =
+    state.source === 'live' && state.localApiAvailable && !!state.accountId;
+  $('#reservePlanned').hidden = !reservationAvailable;
+  $('#manageReservations').hidden = !reservationAvailable;
+  $('#addPersonalTime').hidden = !reservationAvailable;
+  $('#refreshSchedule').hidden = !reservationAvailable;
+  $('#refreshSchedule').disabled = state.awsScheduleStatus === 'loading';
+  $('#planCount').textContent = items.length;
+  $('#mobilePlanCount').textContent = items.length;
+  $('#navConflict').hidden = !conflicted.length;
+  const localCount = state.plan.length,
+    reservedCount = items.filter((s) => state.awsReserved.has(s.id)).length;
+  const scheduleStatus = $('#awsScheduleStatus');
+  scheduleStatus.hidden = !reservationAvailable;
+  scheduleStatus.textContent =
+    state.awsScheduleStatus === 'loading'
+      ? t('AWS Scheduleをバックグラウンドで確認中です。')
+      : state.awsScheduleStatus === 'error'
+        ? t('AWS Scheduleを更新できませんでした。表示中の情報は保持しています。')
+        : state.awsScheduleStatus === 'ready'
+          ? ui`${t('AWS Scheduleと同期済み')} · ${reservedCount}${t('件予約済み')} · ${t('ローカル候補')} ${localCount}`
+          : '';
+  scheduleStatus.classList.toggle('is-error', state.awsScheduleStatus === 'error');
+  $('#planSummary').innerHTML =
+    ui`<p class="plan-summary">${esc(planSummaryLabel(items.length, new Set(items.map((s) => s.date).filter(Boolean)).size))}</p>` +
+    (conflicted.length
+      ? ui`<div class="conflict-banner"><strong>Schedule Conflict</strong> · ${conflicted.length}件の予定で重複<br>Compareで内容を比べて選択できます。</div>`
+      : '');
+  for (const [id, value] of [
+    ['listView', 'list'],
+    ['timelineView', 'timeline'],
+  ]) {
+    $('#' + id).classList.toggle('selected', state.planView === value);
+    $('#' + id).setAttribute('aria-pressed', String(state.planView === value));
+  }
+  const rows = items.filter(
+    (s) =>
+      state.planDate === 'all' ||
+      (state.planDate === 'unknown' ? !s.date : s.date === state.planDate),
+  );
+  let content;
+  if (!items.length && state.awsScheduleStatus === 'loading' && reservationAvailable)
+    content = blank(
+      t('AWS Scheduleを確認しています'),
+      t('セッション検索と他の操作はそのまま利用できます。'),
+    );
+  else if (!items.length)
+    content = blank(
+      t('My Planはまだ空です'),
+      t('気になるセッションを追加して、1日の予定を組み立てましょう。'),
+      t('<button data-action="browse" class="primary">セッションを探す</button>'),
+    );
+  else if (state.status === 'loading')
+    content = blank(t('候補を読み込んでいます'), t('保存済みのMy Planを確認しています。'));
+  else if (state.status === 'error')
+    content = blank(
+      t('保存した候補を表示できません'),
+      t('候補のIDは保持しています。セッションを再取得してください。'),
+      t('<button data-action="retry" class="quiet">再試行</button>'),
+    );
+  else if (!rows.length)
+    content = blank(
+      t('この日の候補はありません'),
+      t('日付を切り替えるか、セッションを追加してください。'),
+    );
+  else if (state.planView === 'list')
+    content = renderPlanList(rows, map, state.planDate === 'all', new Set(state.plan));
+  else if (state.planDate === 'all')
+    content = blank(
+      t('Timelineの日付を選んでください'),
+      t('1日ずつ選ぶと、予定と空き時間を確認できます。'),
+    );
+  else content = renderTimeline(rows, map, state.planDate, new Set(state.plan));
+  const missing = state.plan.filter((id) => !byId(id));
+  if (state.status === 'ready' && missing.length)
+    content += ui`<div class="notice" style="margin-top:14px">現在のデータにない候補が${missing.length}件あります。${missing.map((id) => ui`<div>${esc(id)} <button class="remove-button" data-remove-plan="${esc(id)}">削除</button></div>`).join('')}</div>`;
+  const scroll = $('#planContent').querySelector?.('.timeline-scroll')?.scrollTop || 0;
+  $('#planContent').innerHTML = content;
+  const timeline = $('#planContent').querySelector?.('.timeline-scroll');
+  if (timeline) timeline.scrollTop = scroll;
+}
+function renderNavigation() {
+  const plan = state.active === 'plan';
+  document.body.classList.toggle('plan-focus', plan);
+  for (const [id, selected] of [
+    ['showSessions', !plan],
+    ['showPlan', plan],
+    ['mobileExplore', !plan],
+    ['mobilePlan', plan],
+  ]) {
+    $('#' + id).classList.toggle('selected', selected);
+    $('#' + id).setAttribute('aria-pressed', String(selected));
+  }
+  $('#sessionsPanel').classList.toggle('mobile-hidden', plan);
+  $('#planPanel').classList.toggle('mobile-active', plan);
+  document.body.classList.toggle('mobile-planning', plan);
+}
+function changeActive(value, { restore = true } = {}) {
+  if (state.active === 'explore') exploreScroll = window.scrollY || 0;
+  state.active = value;
+  renderNavigation();
+  if (value === 'plan') void refreshAwsSchedule();
+  if (window.matchMedia?.('(max-width: 900px)').matches)
+    window.scrollTo?.({
+      top: value === 'explore' && restore ? exploreScroll : 0,
+      behavior: 'instant',
+    });
+}
+function renderSourceInfo() {
+  const live = state.source === 'live';
+  $('#sourceControls').hidden = false;
+  $('#sourceBadge').hidden = live;
+  $('#sourceBadge').textContent = t(live ? 'AWS接続' : 'プレビュー');
+  $('#sourceBadge').classList.toggle('live-badge', live);
+  $('#demoMode').hidden = true;
+  $('#liveMode').hidden = true;
+  $('#signIn').hidden = !live || !state.localApiAvailable || !!state.accountId;
+  $('#refreshLive').hidden = !live || !state.localApiAvailable || !state.accountId;
+  $('#signOut').hidden = !live || !state.localApiAvailable || !state.accountId;
+  $('#sourceDescription').textContent = live
+    ? state.localApiAvailable
+      ? t(
+          'AWS Events API · re:Invent 2026 · AWS予約をMy Planに同期。候補はアカウント別にローカル保存します。',
+        )
+      : t('AWS接続用サーバーに接続できません。アプリを再起動してください。')
+    : t(
+        'プレビュー（サンプルデータ） · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。',
+      );
+  $('#timeContext').textContent = live
+    ? t('AWSのtimezoneがある場合はLas Vegasへ変換し、欠落時はAPI記載の時刻をそのまま表示します。')
+    : t('時刻：会場現地時間（Las Vegas）');
+  const meta = state.catalogMeta;
+  let note = '';
+  if (live && meta) {
+    if (meta.refreshing)
+      note = ui`AWS catalog取得中 · ${meta.pages}ページ受信${meta.totalCount === null ? '' : ui` · totalCount ${meta.totalCount}`}`;
+    else if (meta.error)
+      note = ui`最新取得に失敗しました（${meta.error}）。表示中のcacheは保持しています。`;
+    else if (meta.complete)
+      note = ui`${meta.pages}ページを取得 · 更新 ${meta.fetchedAt ? new Date(meta.fetchedAt * 1000).toLocaleString(getLocale()) : t('時刻不明')}${meta.totalCount === null ? '' : ui` · totalCount ${meta.totalCount}`}`;
+    else if (meta.fetchedAt)
+      note = ui`未完了のcache · ${meta.pages}ページ取得済み · 続きの取得を再試行できます。`;
+  }
+  $('#catalogNotice').textContent = note;
+  $('#catalogNotice').hidden = !note;
+  $('#planFootnote').textContent = live
+    ? t(
+        'AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません',
+      )
+    : t('候補はこのブラウザーに保存 · AWS予約とは未同期');
+}
+function renderKindSwitch() {
+  for (const [id, kind] of [
+    ['showSessionItems', 'sessions'],
+    ['showSideEvents', 'sideEvents'],
+    ['showAwsFavorites', 'favorites'],
+  ]) {
+    $('#' + id).classList.toggle('selected', state.exploreKind === kind);
+    $('#' + id).setAttribute('aria-pressed', String(state.exploreKind === kind));
+  }
+  $('#showAwsFavorites').hidden = state.source !== 'live' || !state.accountId;
+  $('#showAwsFavorites').textContent = ui`${t('AWSお気に入り')}（${state.awsFavorites.size}）`;
+  const recommendationsActive = state.exploreView === 'recommendations';
+  $('#showRecommendations').hidden = state.source !== 'live';
+  $('#showRecommendations').textContent = t('おすすめ');
+  $('#showRecommendations').classList.toggle('selected', recommendationsActive);
+  $('#showRecommendations').setAttribute('aria-pressed', String(recommendationsActive));
+  $('#showSessionItems').classList.toggle(
+    'selected',
+    !recommendationsActive && state.exploreKind === 'sessions',
+  );
+  $('#showSideEvents').classList.toggle(
+    'selected',
+    !recommendationsActive && state.exploreKind === 'sideEvents',
+  );
+  $('#showAwsFavorites').classList.toggle(
+    'selected',
+    !recommendationsActive && state.exploreKind === 'favorites',
+  );
+  for (const id of ['showSessionItems', 'showSideEvents', 'showAwsFavorites'])
+    $('#' + id).setAttribute(
+      'aria-pressed',
+      String(!recommendationsActive && $('#' + id).classList.contains('selected')),
+    );
+  $('.search-row').hidden = recommendationsActive;
+  $('#quickFilters').hidden = recommendationsActive;
+  $('.result-toolbar').hidden = recommendationsActive;
+  $('#activeFilters').hidden = recommendationsActive;
+  $('#cards').hidden = recommendationsActive;
+  $('#recommendations').hidden = !recommendationsActive;
+}
+function renderGooglePanel(items) {
+  const enabled = state.localApiAvailable && state.source === 'live';
+  $('#googlePanel').hidden = !enabled;
+  $('#googleSettings').hidden = !enabled;
+  if (!enabled) return;
+  const status = state.googleStatus;
+  $('#googleConnect').hidden = !status.configured || status.connected;
+  $('#googleStatus').textContent = !status.configured
+    ? t('OAuth client IDを登録してください。')
+    : !status.connected
+      ? t('Googleアカウント未接続。Google設定から接続できます。')
+      : status.calendarReady
+        ? t('専用カレンダーに接続中')
+        : t('接続済み · 同期時に専用カレンダーを作成');
+  const candidates = new Map(
+    items
+      .filter(
+        (item) =>
+          validInterval(item) &&
+          (item.dataSource === 'aws' ||
+            item.itemType === 'sideEvent' ||
+            item.itemType === 'personalTime'),
+      )
+      .map((item) => [item.id, item]),
+  );
+  for (const id of status.syncedItemIds || []) {
+    const item = byId(id);
+    if (item && validInterval(item)) candidates.set(id, item);
+  }
+  const plannedIds = new Set(items.map((item) => item.id));
+  const validIds = new Set(
+    [...candidates.keys()].filter(
+      (id) => plannedIds.has(id) || (status.syncedItemIds || []).includes(id),
+    ),
+  );
+  const oldSelection = state.googleSelected;
+  state.googleSelected = state.googleSelected.filter((id) => validIds.has(id));
+  if (oldSelection.length !== state.googleSelected.length) saveGoogleSelection();
+  $('#googleEventChoices').innerHTML = candidates.size
+    ? [...candidates.values()]
+        .map(
+          (item) =>
+            ui`<div class="google-choice"><label><input type="checkbox" data-google-select="${esc(item.id)}" ${state.googleSelected.includes(item.id) ? 'checked' : ''} ${plannedIds.has(item.id) ? '' : 'disabled'}><span class="google-choice-title">${esc(item.title)}<small>${esc(dateLabel(item.date))} · ${esc(item.startTime)}–${esc(item.endTime)}${plannedIds.has(item.id) ? '' : t(' · Planから削除済み')}</small></span></label>${status.syncedItemIds?.includes(item.id) ? '<button class="quiet small" data-google-remove="' + esc(item.id) + t('">Googleから削除</button>') : ''}</div>`,
+        )
+        .join('')
+    : t('<p class="hint">日時の確定したPlan項目がありません。</p>');
+  const selectedCount = state.googleSelected.filter((id) => plannedIds.has(id)).length;
+  $('#googleSync').textContent = ui`選択した予定を同期（${selectedCount}件）`;
+  $('#googleSync').disabled = !status.connected || selectedCount === 0;
+}
+function updateGoogleSelectionUI() {
+  const plannedIds = new Set(plannerItems().map((item) => item.id)),
+    selectedCount = state.googleSelected.filter((id) => plannedIds.has(id)).length;
+  $('#googleSync').textContent = ui`選択した予定を同期（${selectedCount}件）`;
+  $('#googleSync').disabled = !state.googleStatus.connected || selectedCount === 0;
+}
+function renderGoogleResults() {
+  const errors = Object.entries(state.googleResult).filter(([, reason]) => reason);
+  const labels = {
+    GOOGLE_REAUTH_REQUIRED: t('Googleへ再接続してください'),
+    GOOGLE_RATE_LIMITED: t('Google側で一時的な上限に達しました'),
+    GOOGLE_PERMISSION_OR_QUOTA_ERROR: t('権限またはAPI上限を確認してください'),
+    GOOGLE_NETWORK_ERROR: t('通信を確認して再試行してください'),
+    KEYCHAIN_UNAVAILABLE: t('Keychainへ対応情報を保存できませんでした'),
+  };
+  $('#googleSyncResults').innerHTML = errors
+    .map(
+      ([id, reason]) =>
+        ui`<p role="status">${esc(byId(id)?.title || id)} · ${esc(labels[reason] || t('同期に失敗しました。選択を保って再試行できます'))}</p>`,
+    )
+    .join('');
+}
+function reservationCandidates() {
+  return chosen().filter((item) => item.dataSource === 'aws');
+}
+function renderReservationDialog() {
+  const candidates = reservationCandidates(),
+    selectedIds = [...state.reservationSelection],
+    selected = selectedIds.map(byId).filter(Boolean),
+    conflicts = conflictMap(plannerItems());
+  const body = $('#reservationBody'),
+    next = $('#reservationNext'),
+    back = $('#reservationBack'),
+    cancel = state.reservationMode === 'cancel';
+  $('#reservationHeading').textContent = t(
+    cancel ? '予約を解除するセッションを選択' : 'AWSへ予約するセッションを選択',
+  );
+  if (cancel) {
+    if (state.reservationStage === 'results') {
+      const failed = new Map(
+        (state.reservationResults?.failed || []).map((row) => [row.sessionId, row.code]),
+      );
+      const done = new Set(state.reservationResults?.cancelled || []),
+        unknown = new Set(state.reservationResults?.unknown || []);
+      body.innerHTML = selectedIds
+        .map((id) => {
+          const item = byId(id),
+            code = failed.get(id);
+          const label = done.has(id)
+            ? t('予約解除済み・AWS Scheduleで確認済み')
+            : unknown.has(id)
+              ? t('解除結果不明・Scheduleを確認してください')
+              : t('予約を解除できませんでした');
+          return ui`<div class="reservation-result"><strong class="${done.has(id) ? 'confirmed' : code ? 'failed' : 'unknown'}">${esc(label)}</strong><span>${esc(item?.title || id)} · ${esc(item?.code || id)}</span>${code ? ui`<small>${esc(reservationFailureLabel(code))}</small>` : ''}</div>`;
+        })
+        .join('');
+      $('#reservationIntro').textContent = state.reservationResults?.scheduleConfirmed
+        ? t('AWS Scheduleを再読込し、解除結果を照合しました。')
+        : t('AWS Scheduleを再読込できませんでした。解除結果を確認してください。');
+      next.hidden = true;
+      back.textContent = t('閉じる');
+    } else if (state.reservationStage === 'confirm') {
+      body.innerHTML = ui`<p class="reservation-warning">${t('選択した予約をAWSから1件ずつ解除します。この操作はMy Planの候補を削除しません。')}</p><ul class="google-sync-preview">${selectedIds
+        .map((id) => {
+          const item = byId(id);
+          return ui`<li>${esc(item?.title || id)} · ${esc(item?.code || id)}</li>`;
+        })
+        .join(
+          '',
+        )}</ul><p class="hint">${t('解除後にAWS Scheduleを再読込し、セッションごとに結果を表示します。')}</p>`;
+      next.textContent = t('選択した予約を解除');
+      next.hidden = false;
+      next.disabled = false;
+      back.textContent = t('選択へ戻る');
+    } else {
+      const reserved = [...state.awsReserved];
+      const tooMany = state.reservationSelection.size >= 10;
+      body.innerHTML = reserved.length
+        ? reserved
+            .map((id) => {
+              const item = byId(id);
+              return ui`<label class="reservation-choice"><input type="checkbox" data-reservation-select="${esc(id)}" ${state.reservationSelection.has(id) ? 'checked' : ''} ${!state.reservationSelection.has(id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item?.title || t('カタログにないセッション'))}</strong><small>${esc(item?.code || id)}${item ? ui` · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}` : ''} · ${t('AWS Scheduleに予約済み')}</small></span></label>`;
+            })
+            .join('')
+        : t('<p class="hint">AWS Scheduleに予約済みのセッションはありません。</p>');
+      $('#reservationIntro').textContent = t(
+        'AWS Scheduleの予約を最大10件選んで解除できます。My Planから外す操作とは別です。',
+      );
+      next.textContent = ui`${t('選択内容を確認')}（${state.reservationSelection.size}/10）`;
+      next.hidden = false;
+      next.disabled = !state.reservationSelection.size;
+      back.textContent = t('閉じる');
+    }
+    return;
+  }
+  if (state.reservationStage === 'results') {
+    const failures = new Map(
+      (state.reservationResults?.failed || []).map((row) => [row.sessionId, row]),
+    );
+    const unknown = new Set(state.reservationResults?.unknown || []);
+    const successful = new Set(state.reservationResults?.successful || []);
+    body.innerHTML = selected
+      .map((item) => {
+        const failure = failures.get(item.id);
+        const confirmed =
+          state.awsReserved.has(item.id) ||
+          (successful.has(item.id) && state.reservationResults?.scheduleConfirmed);
+        const label = confirmed
+          ? t('予約済み・AWS Scheduleで確認済み')
+          : unknown.has(item.id)
+            ? t('結果不明・AWS Scheduleで未確認')
+            : failure
+              ? t('予約できませんでした')
+              : successful.has(item.id)
+                ? t('AWS応答は成功・Schedule未確認')
+                : t('予約済み');
+        const statusClass = confirmed ? 'confirmed' : failure ? 'failed' : 'unknown';
+        const reason = failure ? reservationFailureLabel(failure.code) : '';
+        const conflictNames = (failure?.conflictsWith || [])
+          .map((id) => byId(id)?.code || id)
+          .join('、');
+        return ui`<div class="reservation-result"><strong class="${statusClass}">${esc(label)}</strong><span>${esc(item.title)} · ${esc(item.code)}</span>${reason ? ui`<small>${esc(reason)}${conflictNames ? ui` · ${t('競合')}: ${esc(conflictNames)}` : ''}</small>` : ''}</div>`;
+      })
+      .join('');
+    $('#reservationIntro').textContent = state.reservationResults?.scheduleConfirmed
+      ? t('AWS Scheduleを再読込し、予約状態を照合しました。')
+      : t('AWS Scheduleを再読込できませんでした。結果を確定できない項目があります。');
+    next.hidden = true;
+    back.textContent = t('閉じる');
+  } else if (state.reservationStage === 'confirm') {
+    body.innerHTML = ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="google-sync-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}${conflicts.get(item.id)?.length ? ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>` : ''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;
+    next.textContent = t('この内容でAWSへ送信');
+    next.hidden = false;
+    back.textContent = t('選択へ戻る');
+  } else {
+    const tooMany = state.reservationSelection.size >= 10;
+    body.innerHTML = candidates.length
+      ? candidates
+          .map((item) => {
+            const reserved = state.awsReserved.has(item.id),
+              eligible = item.reservable === true && !reserved;
+            const note = reserved
+              ? t('AWS Scheduleに予約済み')
+              : item.reservable === true
+                ? t('予約可能')
+                : t('AWS API上で予約対象外');
+            return ui`<label class="reservation-choice ${eligible ? '' : 'is-disabled'}"><input type="checkbox" data-reservation-select="${esc(item.id)}" ${state.reservationSelection.has(item.id) ? 'checked' : ''} ${eligible ? '' : 'disabled'} ${!state.reservationSelection.has(item.id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)} · ${esc(note)}${conflicts.get(item.id)?.length ? ui` · ${t('My Plan内で時間重複')}` : ''}</small></span></label>`;
+          })
+          .join('')
+      : t('<p class="hint">My PlanにAWSセッションがありません。</p>');
+    $('#reservationIntro').textContent = t(
+      '予約対象を最大10件選んでください。My Plan内の時間重複を確認できますが、AWSが最終判定します。',
+    );
+    next.textContent = ui`${t('選択内容を確認')}（${state.reservationSelection.size}/10）`;
+    next.hidden = false;
+    next.disabled = state.reservationSelection.size === 0;
+    back.textContent = t('閉じる');
+  }
+}
+function reservationFailureLabel(code) {
+  const labels = {
+    sessionNotReservable: 'AWS API上で予約対象外',
+    scheduleConflict: '予約時間が他の予定と重複',
+    alreadyScheduled: 'すでに予約済み',
+    sessionFull: '満席',
+    insufficientAccess: '予約権限がありません',
+    timePassed: 'セッション開始後',
+    alreadyFavorited: 'お気に入り登録済み',
+    notFavorited: 'お気に入り登録されていません',
+    RESERVATIONS_CLOSED_OR_CONFLICT: '予約・解除の受付時間外です。AWSの案内を確認してください。',
+    RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+    EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+    SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+    CANCELLATION_FAILED: 'CANCELLATION_FAILED',
+    other: 'AWSが予約を受け付けませんでした',
+  };
+  return t(labels[code] || 'AWSが予約を受け付けませんでした');
+}
+async function openReservationDialog(mode = 'reserve') {
+  if (state.source !== 'live' || !state.localApiAvailable || !state.accountId) return;
+  try {
+    if (!(await refreshAwsSchedule({ force: true }))) throw new Error('AWS_SCHEDULE_UNAVAILABLE');
+    state.reservationSelection = new Set();
+    state.reservationResults = null;
+    state.reservationMode = mode;
+    state.reservationStage = 'select';
+    render();
+    renderReservationDialog();
+    openDialog('reservationDialog');
+  } catch {
+    notify(t('AWS Scheduleを取得できませんでした。予約前に状態を確認してください。'));
+  }
+}
+async function submitReservationBatch() {
+  const ids = [...state.reservationSelection];
+  if (!ids.length || ids.length > 10) return;
+  const button = $('#reservationNext');
+  button.disabled = true;
+  state.reservationBusy = true;
+  try {
+    state.reservationResults = await reserveLiveSessions(ids);
+    if (state.reservationResults.scheduleConfirmed) {
+      state.awsReserved = new Set([
+        ...state.awsReserved,
+        ...(state.reservationResults.successful || []),
+      ]);
+      state.awsScheduleFetchedAt = Date.now();
+      state.awsScheduleStatus = 'ready';
+    }
+    for (const item of state.sessions)
+      if (item.uiState)
+        item.uiState.attendance = state.awsReserved.has(item.id) ? 'reserved' : 'none';
+    state.reservationStage = 'results';
+    renderReservationDialog();
+    render();
+  } catch (error) {
+    const messages = {
+      RESERVATIONS_CLOSED_OR_CONFLICT:
+        '予約受付期間外か、AWS Scheduleが更新されています。Scheduleを更新して確認してください。',
+      SESSION_ALREADY_RESERVED:
+        'AWS Scheduleに予約済みのセッションがあります。Scheduleを更新してください。',
+      SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+      EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+      RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+      RESERVATION_OUTCOME_UNKNOWN:
+        '結果を確認できませんでした。再送せず、AWS Scheduleを確認してください。',
+      SESSION_NOT_RESERVABLE:
+        '予約対象外のセッションが含まれています。AWSカタログを更新してください。',
+    };
+    notify(t(messages[error.message] || 'AWSへ予約を送信できませんでした。'));
+  } finally {
+    state.reservationBusy = false;
+    button.disabled = false;
+  }
+}
+async function submitReservationCancellations() {
+  const ids = [...state.reservationSelection];
+  if (!ids.length || ids.length > 10) return;
+  const button = $('#reservationNext');
+  button.disabled = true;
+  state.reservationBusy = true;
+  try {
+    state.reservationResults = await cancelLiveReservations(ids);
+    if (state.reservationResults.scheduleConfirmed) {
+      state.awsReserved = new Set(
+        state.reservationResults.reserved ||
+          [...state.awsReserved].filter((id) => !state.reservationResults.cancelled.includes(id)),
+      );
+      state.awsScheduleFetchedAt = Date.now();
+      state.awsScheduleStatus = 'ready';
+    }
+    for (const item of state.sessions)
+      if (item.uiState)
+        item.uiState.attendance = state.awsReserved.has(item.id) ? 'reserved' : 'none';
+    state.reservationStage = 'results';
+    renderReservationDialog();
+    render();
+  } catch (error) {
+    const messages = {
+      SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+      EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+      RESERVATIONS_CLOSED_OR_CONFLICT: '予約・解除の受付時間外です。AWSの案内を確認してください。',
+      RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+    };
+    notify(t(messages[error.message] || 'AWSへ予約解除を送信できませんでした。'));
+  } finally {
+    state.reservationBusy = false;
+    button.disabled = false;
+  }
+}
+function render() {
+  const items = plannerItems(),
+    map = conflictMap(items);
+  renderKindSwitch();
+  renderQuick();
+  renderApplied();
+  renderTray();
+  renderExplore(map);
+  renderPlan(items, map);
+  renderGooglePanel(items);
+  renderGoogleResults();
+  if (state.exploreView === 'recommendations') renderRecommendationsPanel(items);
+  renderNavigation();
+  renderSourceInfo();
+  $('#storageWarning').hidden = !state.warning;
+  $('#storageWarning').textContent = t(state.warning);
+}
+function renderRecommendationsPanel(items = plannerItems()) {
+  const root = $('#recommendations');
+  if (state.source !== 'live') {
+    root.innerHTML = '';
+    return;
+  }
+  root.innerHTML = renderRecommendations(
+    [
+      ...getRecommendations(state.sessions, { plan: items }),
+      ...getNewsRecommendations(state.sessions, state.recommendationNews, { plan: items }),
+    ],
+    new Set(state.plan),
+    state.recommendationInterests,
+    getPersonalizedRecommendations(state.sessions, {
+      interests: state.recommendationInterests,
+      plan: items,
+    }),
+    state.recommendationNews,
+  );
+  root.querySelectorAll('[data-interest]').forEach((button) =>
+    button.addEventListener('click', () => {
+      const id = button.dataset.interest;
+      state.recommendationInterests = state.recommendationInterests.includes(id)
+        ? state.recommendationInterests.filter((value) => value !== id)
+        : [...state.recommendationInterests, id];
+      try {
+        storage.setItem(
+          'reinvent-recommendation-interests',
+          JSON.stringify(state.recommendationInterests),
+        );
+      } catch {}
+      renderRecommendationsPanel();
+    }),
+  );
+}
+function renderSearch() {
+  renderKindSwitch();
+  renderQuick();
+  renderApplied();
+  renderTray();
+  renderExplore(conflictMap(plannerItems()));
+  renderNavigation();
+}
+function commitSearch({ push = true } = {}) {
+  clearTimeout(searchTimer);
+  displayLimit = 40;
+  syncURL(push);
+  renderSearch();
+}
+function resetFilters(includeQuery = false) {
+  state.filters = {
+    ...defaultFilters(),
+    levelDefaultSuppressed: true,
+    query: includeQuery ? '' : state.filters.query,
+  };
+  $('#q').value = state.filters.query;
+  commitSearch();
+}
+function setExploreKind(kind) {
+  state.exploreView = 'sessions';
+  state.exploreKind = kind;
+  buildFacets();
+  commitSearch();
+}
+function setExploreView(view) {
+  state.exploreView = view;
+  renderKindSwitch();
+  if (view === 'recommendations') renderRecommendationsPanel();
+}
+function renderCurrentDetail() {
+  const item = byId(state.detailId);
+  if (item) {
+    $('#detailContent').innerHTML = renderDetail(
+      item,
+      new Set(state.plan),
+      conflictMap(plannerItems()),
+      state.detailTranslations.get(item.id) || { status: 'idle', text: '' },
+    );
+    const button = $('#detailContent [data-translate-detail]');
+    button?.addEventListener('click', () => void translateDetail(button.dataset.translateDetail));
+  }
+}
+function savePlan() {
+  const key = currentPlanKey();
+  state.warning = key
+    ? writePlan(storage, state.plan, key)
+    : t('サインイン後にアカウント別のLocal Planへ保存できます。');
+  render();
+  if (state.detailId && byId(state.detailId)) renderCurrentDetail();
+  if ($('#compareDialog').open)
+    $('#compareContent').innerHTML = renderComparison(
+      state.comparison.map(byId).filter(Boolean),
+      new Set(state.plan),
+      conflictMap(plannerItems()),
+    );
+}
+function setPlan(id, included) {
+  const item = byId(id);
+  if (!item) throw new Error('Unknown session');
+  if (item.itemType === 'personalTime') throw new Error('AWS personal time is read-only');
+  state.plan = included ? [...new Set([...state.plan, id])] : state.plan.filter((x) => x !== id);
+  savePlan();
+  notify(
+    included ? t('My Planに追加しました（予約ではありません）') : t('My Planから削除しました'),
+  );
+}
+function openPersonalTime(item = null) {
+  editingPersonalTimeId = item?.personalTimeId || '';
+  $('#personalTimeHeading').textContent = t(
+    editingPersonalTimeId ? 'AWS個人予定を編集' : 'AWS個人予定を追加',
+  );
+  $('#personalTimeDelete').hidden = !editingPersonalTimeId;
+  $('#personalTimeError').hidden = true;
+  $('#personalTimeForm').reset();
+  $('#personalTimeTitle').value = item?.title || '';
+  $('#personalTimeDescription').value = item?.abstract || '';
+  $('#personalTimeLocation').value = item?.venue || '';
+  $('#personalTimeDate').value =
+    item?.date ||
+    (['all', 'unknown'].includes(state.planDate) ? venueToday() : state.planDate || venueToday());
+  $('#personalTimeStart').value = item?.startTime || '12:00';
+  $('#personalTimeEnd').value = item?.endTime || '13:00';
+  openDialog('personalTimeDialog');
+}
+function openPersonalTimeDelete(personalTimeId) {
+  const item = state.awsPersonalTimes.find((value) => value.personalTimeId === personalTimeId);
+  if (!item) return;
+  editingPersonalTimeId = personalTimeId;
+  $('#personalTimeDeleteName').textContent = item.title;
+  openDialog('personalTimeDeleteDialog');
+}
+function personalTimeInput(action) {
+  const date = $('#personalTimeDate').value,
+    start = venueLocalDateTimeToUtc(date, $('#personalTimeStart').value),
+    end = venueLocalDateTimeToUtc(date, $('#personalTimeEnd').value);
+  if (!start || !end) return null;
+  const duration = (Date.parse(`${end}Z`) - Date.parse(`${start}Z`)) / 60000;
+  if (duration <= 0 || duration % 5 !== 0) return null;
+  return {
+    action,
+    personalTimeId: editingPersonalTimeId,
+    title: $('#personalTimeTitle').value.trim(),
+    description: $('#personalTimeDescription').value.trim(),
+    startDateTime: start,
+    endDateTime: end,
+    location: $('#personalTimeLocation').value.trim(),
+  };
+}
+async function submitPersonalTime(event) {
+  event.preventDefault();
+  const payload = personalTimeInput(editingPersonalTimeId ? 'update' : 'create');
+  if (!payload) {
+    $('#personalTimeError').textContent = t(
+      '開始・終了時刻は会場時間で入力し、5分単位の正しい範囲を指定してください。',
+    );
+    $('#personalTimeError').hidden = false;
+    return;
+  }
+  const button = $('#personalTimeSave');
+  button.disabled = true;
+  try {
+    const result = await saveLivePersonalTime(payload);
+    if (!result.confirmed) {
+      await refreshAwsSchedule({ force: true });
+      notify(t('AWS Scheduleで結果を確認できませんでした。再送せず、Scheduleを確認してください。'));
+      return;
+    }
+    $('#personalTimeDialog').close();
+    await refreshAwsSchedule({ force: true });
+    notify(t(editingPersonalTimeId ? 'AWS個人予定を更新しました' : 'AWS個人予定を追加しました'));
+  } catch (error) {
+    const message = {
+      SIGN_IN_REQUIRED: 'AWSへサインインしてください。',
+      EVENT_REGISTRATION_REQUIRED: 'AWS re:Inventへの登録が必要です。',
+      RATE_LIMITED: 'AWS側で一時的な上限に達しました。時間をおいてください。',
+      PERSONAL_TIME_FIELDS_INVALID: 'タイトル・説明・場所の長さを確認してください。',
+      PERSONAL_TIME_DATETIME_INVALID: '日付と時刻を確認してください。',
+      PERSONAL_TIME_INTERVAL_INVALID: '終了は開始より後の5分単位にしてください。',
+      AWS_OPERATION_CLOSED: 'AWS個人予定の変更は現在受け付けられていません。',
+      PERSONAL_TIME_REJECTED: 'AWSが個人予定を受け付けませんでした。',
+    };
+    $('#personalTimeError').textContent = t(
+      message[error.message] || 'AWS個人予定を保存できませんでした。',
+    );
+    $('#personalTimeError').hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+async function deletePersonalTime() {
+  const id = editingPersonalTimeId;
+  if (!id) return;
+  const button = $('#confirmPersonalTimeDelete');
+  button.disabled = true;
+  try {
+    const result = await saveLivePersonalTime({ action: 'delete', personalTimeId: id });
+    $('#personalTimeDeleteDialog').close();
+    if (!result.confirmed) {
+      await refreshAwsSchedule({ force: true });
+      notify(
+        t('AWS Scheduleで削除を確認できませんでした。再実行せず、Scheduleを確認してください。'),
+      );
+      return;
+    }
+    if ($('#personalTimeDialog').open) $('#personalTimeDialog').close();
+    await refreshAwsSchedule({ force: true });
+    notify(t('AWS個人予定を削除しました'));
+  } catch (error) {
+    notify(
+      t(
+        error.message === 'SIGN_IN_REQUIRED'
+          ? 'AWSへサインインしてください。'
+          : 'AWS個人予定を削除できませんでした。',
+      ),
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+function openDialog(id) {
+  const d = $('#' + id);
+  if (!d.open) d.showModal();
+}
+function openDetail(id) {
+  const s = byId(id);
+  if (!s) return;
+  state.detailId = id;
+  renderCurrentDetail();
+  openDialog('detailDialog');
+}
+async function translateDetail(id) {
+  const item = byId(id);
+  if (!item?.abstract || state.detailId !== id) return;
+  state.detailTranslations.set(id, { status: 'loading', text: '' });
+  renderCurrentDetail();
+  try {
+    const text = await translateSessionToJapanese(item.title, item.abstract);
+    state.detailTranslations.set(id, { status: 'ready', text });
+  } catch {
+    state.detailTranslations.set(id, { status: 'error', text: '' });
+  }
+  if (state.detailId === id) renderCurrentDetail();
+}
+function toggleCompare(id) {
+  if (!byId(id)) return;
+  if (state.compare.includes(id)) state.compare = state.compare.filter((x) => x !== id);
+  else if (state.compare.length < 3) state.compare.push(id);
+  else {
+    notify(t('比較は同時に3件までです'));
+    return;
+  }
+  render();
+}
+function openCompare(ids) {
+  state.comparison = [...new Set(ids)].filter((id) => byId(id)).slice(0, 3);
+  if (state.comparison.length < 2) return;
+  $('#compareContent').innerHTML = renderComparison(
+    state.comparison.map(byId),
+    new Set(state.plan),
+    conflictMap(plannerItems()),
+  );
+  openDialog('compareDialog');
+}
+function findGap(date, from, to) {
+  state.exploreKind = 'sessions';
+  state.filters = {
+    ...defaultFilters(),
+    date: [date],
+    from,
+    to: to === '24:00' ? '' : to,
+    fit: 'contained',
+  };
+  $('#q').value = '';
+  commitSearch();
+  changeActive('explore', { restore: false });
+  notify(t('空き時間の枠内に収まるセッションを表示しています'));
+}
+function buildFacets() {
+  const source = state.exploreKind === 'sideEvents' ? state.sideEvents : state.sessions;
+  for (const key of MULTI_KEYS) {
+    const field = { topic: 'topics', service: 'services', speaker: 'speakers' }[key] || key;
+    facets[key] = [
+      ...new Set(
+        source.flatMap((s) => (Array.isArray(s[field]) ? s[field] : [s[field]])).filter(Boolean),
+      ),
+    ].sort();
+  }
+}
+function renderFacetOptions(key, query = '') {
+  const selected = state.draft[key],
+    all = [...new Set([...selected, ...facets[key]])];
+  const values = all.filter((v) => v.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const visible = values.slice(0, 100);
+  return (
+    visible
+      .map(
+        (value) =>
+          ui`<label class="facet-option"><input type="checkbox" data-facet="${key}" value="${esc(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${esc(key === 'date' ? dateLabel(value) : value)}</span></label>`,
+      )
+      .join('') +
+    (values.length > 100
+      ? t('<p class="hint">先頭100件を表示。検索して絞り込んでください。</p>')
+      : '') +
+    (!values.length ? t('<p class="facet-empty">該当する値はありません。</p>') : '')
+  );
+}
+function openFilters({ preserveDraft = false } = {}) {
+  const draftFrom = $('#from').value,
+    draftTo = $('#to').value,
+    draftFit = $('#fitContained').checked;
+  if (!preserveDraft || !state.draft) state.draft = structuredClone(state.filters);
+  const renderFacet = (key) =>
+    ui`<fieldset class="facet-group"><legend>${t(FACET_LABELS[key])}</legend>${facets[key]?.length > 12 ? ui`<input class="facet-search" type="search" data-facet-search="${key}" aria-label="${t(FACET_LABELS[key])}の候補を検索" placeholder="${t(FACET_LABELS[key])}を検索">` : ''}<div class="facet-options" id="facet-${key}">${renderFacetOptions(key)}</div></fieldset>`;
+  $('#dateFacet').innerHTML = renderFacet('date');
+  $('#facetFields').innerHTML = [
+    'sessionType',
+    'level',
+    'track',
+    'topic',
+    'service',
+    'venue',
+    'speaker',
+  ]
+    .map(renderFacet)
+    .join('');
+  $('#from').value = preserveDraft ? draftFrom : state.filters.from;
+  $('#to').value = preserveDraft ? draftTo : state.filters.to;
+  $('#fitContained').checked = preserveDraft ? draftFit : state.filters.fit === 'contained';
+  if (!preserveDraft) $('#timeError').hidden = true;
+  openDialog('filterDialog');
+}
+function applySessions(sessions) {
+  state.sessions = sessions;
+  for (const item of sessions)
+    if (item.uiState) {
+      item.uiState.attendance = state.awsReserved.has(item.id) ? 'reserved' : 'none';
+      item.uiState.favorite = state.awsFavorites.has(item.id);
+    }
+  const all = [...sessions, ...state.sideEvents, ...state.awsPersonalTimes];
+  state.byId = new Map(all.map((s) => [s.id, s]));
+  state.catalog = createCatalog(sessions);
+  state.sideEventCatalog = createCatalog(state.sideEvents);
+  buildFacets();
+}
+async function refreshAwsSchedule({ force = false } = {}) {
+  if (state.source !== 'live' || !state.localApiAvailable || !state.accountId) return false;
+  if (scheduleRefreshPromise) return scheduleRefreshPromise;
+  if (!force && state.awsScheduleFetchedAt && Date.now() - state.awsScheduleFetchedAt < 60000)
+    return true;
+  const accountId = state.accountId;
+  state.awsScheduleStatus = 'loading';
+  render();
+  scheduleRefreshPromise = (async () => {
+    try {
+      const response = await fetchLiveSchedule(),
+        reserved = response.schedule?.reserved,
+        favorites = response.schedule?.favorites,
+        personalTime = response.schedule?.personalTime;
+      if (!Array.isArray(reserved) || !Array.isArray(favorites) || !Array.isArray(personalTime))
+        throw new Error('AWS_RESPONSE_INVALID');
+      if (state.source !== 'live' || state.accountId !== accountId) return false;
+      state.awsReserved = new Set(reserved.filter((id) => typeof id === 'string'));
+      state.awsFavorites = new Set(favorites.filter((id) => typeof id === 'string'));
+      state.awsPersonalTimes = adaptAwsPersonalTimes(personalTime);
+      state.awsScheduleFetchedAt = Date.now();
+      state.awsScheduleStatus = 'ready';
+      for (const item of state.sessions)
+        if (item.uiState) {
+          item.uiState.attendance = state.awsReserved.has(item.id) ? 'reserved' : 'none';
+          item.uiState.favorite = state.awsFavorites.has(item.id);
+        }
+      applySessions(state.sessions);
+      render();
+      return true;
+    } catch {
+      if (state.source === 'live' && state.accountId === accountId) {
+        state.awsScheduleStatus = 'error';
+        render();
+      }
+      return false;
+    } finally {
+      scheduleRefreshPromise = null;
+    }
+  })();
+  return scheduleRefreshPromise;
+}
+async function refreshRecommendationNews() {
+  if (state.source !== 'live' || !state.localApiAvailable) return;
+  try {
+    const response = await fetchRecommendationNews();
+    state.recommendationNews = response;
+    clearTimeout(newsPollTimer);
+    const delay = response.refreshing
+      ? 1800
+      : response.error
+        ? 30 * 60 * 1000
+        : response.fetchedAt
+          ? Math.max(60_000, 6 * 60 * 60 * 1000 - (Date.now() - response.fetchedAt * 1000))
+          : null;
+    if (delay !== null) newsPollTimer = setTimeout(refreshRecommendationNews, delay);
+    render();
+  } catch {}
+}
+function scheduleLivePoll(seq) {
+  clearTimeout(livePollTimer);
+  livePollTimer = setTimeout(async () => {
+    if (seq !== sequence || state.source !== 'live') return;
+    try {
+      const snapshot = await fetchLiveCatalog();
+      if (seq !== sequence) return;
+      state.catalogMeta = snapshot;
+      applySessions(snapshot.sessions);
+      state.status =
+        snapshot.error && !snapshot.sessions.length
+          ? 'error'
+          : snapshot.refreshing && !snapshot.sessions.length
+            ? 'loading'
+            : 'ready';
+      render();
+      if (snapshot.refreshing || (!snapshot.complete && !snapshot.error)) scheduleLivePoll(seq);
+    } catch (error) {
+      if (seq !== sequence) return;
+      state.status = error.status === 401 ? 'unauthenticated' : 'error';
+      render();
+    }
+  }, 700);
+}
+async function load() {
+  controller?.abort();
+  clearTimeout(livePollTimer);
+  clearTimeout(newsPollTimer);
+  const activeController = new AbortController();
+  controller = activeController;
+  const seq = ++sequence;
+  state.status = 'loading';
+  state.catalogMeta = null;
+  render();
+  const timer = setTimeout(() => activeController.abort(), 15000);
+  try {
+    if (state.source === 'demo') {
+      const sessions = await sessionRepository.listSessions({ signal: activeController.signal });
+      if (seq !== sequence) return;
+      state.catalogMeta = {
+        complete: true,
+        refreshing: false,
+        pages: 1,
+        totalCount: sessions.length,
+        fetchedAt: null,
+      };
+      applySessions(sessions);
+      state.status = 'ready';
+      render();
+    } else {
+      void refreshRecommendationNews();
+      const snapshot = await fetchLiveCatalog({ signal: activeController.signal });
+      if (seq !== sequence) return;
+      state.catalogMeta = snapshot;
+      applySessions(snapshot.sessions);
+      state.status =
+        snapshot.error && !snapshot.sessions.length
+          ? 'error'
+          : snapshot.refreshing && !snapshot.sessions.length
+            ? 'loading'
+            : 'ready';
+      render();
+      if (snapshot.refreshing || (!snapshot.complete && !snapshot.error)) scheduleLivePoll(seq);
+    }
+  } catch (error) {
+    if (seq !== sequence) return;
+    state.status = state.source === 'live' && error.status === 401 ? 'unauthenticated' : 'error';
+    render();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function switchSource(source, accountId = state.accountId) {
+  if (source !== runtimeMode) return;
+  const oldKey = currentPlanKey();
+  state.source = source;
+  if (source !== 'live') state.exploreView = 'sessions';
+  state.accountId = source === 'live' ? accountId : '';
+  state.awsReserved = new Set();
+  state.awsFavorites = new Set();
+  state.awsPersonalTimes = [];
+  state.awsScheduleStatus = 'idle';
+  state.awsScheduleFetchedAt = 0;
+  const nextKey = currentPlanKey();
+  if (oldKey !== nextKey) {
+    const plan = nextKey ? readPlan(storage, nextKey) : { ids: [], warning: '' };
+    state.plan = plan.ids;
+    state.warning = plan.warning;
+    state.googleSelected = readGoogleSelection();
+    state.googleResult = {};
+  }
+  state.planDate = '';
+  load();
+}
+async function initialize() {
+  try {
+    state.sideEvents = await sideEventRepository.listSideEvents();
+  } catch {}
+  applySessions([]);
+  if (runtimeMode === 'live') {
+    state.source = 'live';
+    state.plan = [];
+    state.warning = '';
+    try {
+      const session = await localSessionStatus();
+      state.localApiAvailable = true;
+      if (session.authenticated && session.accountId) {
+        state.accountId = session.accountId;
+        const plan = readPlan(storage, currentPlanKey());
+        state.plan = plan.ids;
+        state.warning = plan.warning;
+        void refreshAwsSchedule();
+      }
+      state.googleSelected = readGoogleSelection();
+      try {
+        state.googleStatus = await googleCalendarStatus();
+      } catch {
+        state.googleStatus = {
+          configured: false,
+          connected: false,
+          calendarReady: false,
+          syncedItemIds: [],
+        };
+      }
+    } catch {
+      state.localApiAvailable = false;
+    }
+  } else {
+    state.source = 'demo';
+    state.plan = saved.ids;
+    state.warning = saved.warning;
+  }
+  syncURL(false);
+  render();
+  load();
+}
+async function beginSignIn() {
+  try {
+    const url = await startBuilderIdSignIn();
+    window.location.assign(url);
+  } catch {
+    notify(t('サインインを開始できませんでした。Local serverの状態を確認してください。'));
+  }
+}
+async function refreshGoogleStatus() {
+  if (!state.localApiAvailable) return;
+  try {
+    state.googleStatus = await googleCalendarStatus();
+  } catch {
+    state.googleStatus = {
+      configured: false,
+      connected: false,
+      calendarReady: false,
+      syncedItemIds: [],
+    };
+  }
+  render();
+}
+async function saveGoogleClient() {
+  const button = $('#saveGoogleClient'),
+    clientId = $('#googleClientId').value.trim();
+  button.disabled = true;
+  try {
+    await configureGoogleCalendar(clientId);
+    $('#googleSetupDialog').close();
+    notify(t('Google OAuth client IDをKeychainへ保存しました'));
+    await refreshGoogleStatus();
+  } catch (error) {
+    notify(
+      error.message === 'GOOGLE_DISCONNECT_BEFORE_RECONFIGURE'
+        ? t('接続中のGoogleアカウントがあるため、再設定できません。')
+        : t('client IDを保存できませんでした。形式とKeychainを確認してください。'),
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+async function beginGoogleConnect() {
+  try {
+    await connectGoogleCalendar();
+    notify(t('Googleの同意画面を既定のブラウザーで開きました'));
+  } catch (error) {
+    notify(
+      error.message === 'GOOGLE_CLIENT_ID_REQUIRED'
+        ? t('先にGoogle OAuth client IDを設定してください。')
+        : t('Google接続を開始できませんでした。'),
+    );
+  }
+}
+function openGoogleSyncConfirmation() {
+  const selected = plannerItems().filter(
+    (item) => state.googleSelected.includes(item.id) && validInterval(item),
+  );
+  if (!selected.length) {
+    notify(t('日時が確定した候補を選択してください。'));
+    return;
+  }
+  $('#googleSyncPreview').innerHTML = selected
+    .map(
+      (item) =>
+        ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`,
+    )
+    .join('');
+  openDialog('googleSyncDialog');
+}
+async function confirmGoogleSync() {
+  const button = $('#confirmGoogleSync'),
+    items = plannerItems().filter(
+      (item) => state.googleSelected.includes(item.id) && validInterval(item),
+    );
+  if (!items.length) return;
+  button.disabled = true;
+  try {
+    const payload = items.map((item) => ({
+      itemId: item.id,
+      title: item.title,
+      description: [item.abstract, item.code ? ui`Session: ${item.code}` : '', item.sourceUrl || '']
+        .filter(Boolean)
+        .join('\n'),
+      location: [item.venue, item.room].filter(Boolean).join(' · '),
+      start: calendarInstant(item.date, item.startTime),
+      end: calendarInstant(item.date, item.endTime),
+    }));
+    if (payload.some((item) => !item.start || !item.end)) throw new Error('TIME_UNAVAILABLE');
+    const result = await syncGoogleCalendar(payload);
+    for (const row of result.results || []) {
+      if (row.status === 'failed')
+        state.googleResult[row.itemId] = row.error || 'GOOGLE_SYNC_FAILED';
+      else delete state.googleResult[row.itemId];
+    }
+    renderGoogleResults();
+    $('#googleSyncDialog').close();
+    await refreshGoogleStatus();
+    notify(
+      ui`${result.synced}件を同期しました${result.failed ? ui` · ${result.failed}件は失敗。選択を保ったまま再試行できます` : ''}`,
+    );
+  } catch (error) {
+    notify(
+      error.message === 'TIME_UNAVAILABLE'
+        ? t(
+            '会場時刻を変換できない予定があります。Googleへ同期できません。認証・通信・Calendar API設定を確認してください。',
+          )
+        : t(
+            'Google Calendarへ同期できませんでした。認証・通信・Calendar API設定を確認してください。',
+          ),
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+function openGoogleRemoveConfirmation(id) {
+  const item = byId(id);
+  if (!item || !state.googleStatus.syncedItemIds?.includes(id)) return;
+  state.pendingGoogleRemove = id;
+  $('#googleRemovePreview').innerHTML =
+    ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(timeLabel(item))}</li>`;
+  openDialog('googleRemoveDialog');
+}
+async function confirmGoogleRemove() {
+  const button = $('#confirmGoogleRemove'),
+    id = state.pendingGoogleRemove;
+  if (!id) return;
+  button.disabled = true;
+  try {
+    const result = await removeGoogleCalendarItems([id]);
+    if (result.results?.[0]?.status === 'removed') delete state.googleResult[id];
+    else if (result.results?.[0]?.status === 'failed')
+      state.googleResult[id] = result.results[0].error || 'GOOGLE_DELETE_FAILED';
+    renderGoogleResults();
+    $('#googleRemoveDialog').close();
+    await refreshGoogleStatus();
+    notify(
+      result.removed
+        ? t('Google Calendarから同期予定を削除しました')
+        : t('Google Calendar予定を削除できませんでした。再試行してください。'),
+    );
+  } catch {
+    notify(t('Google Calendarから削除できませんでした。認証・通信状態を確認してください。'));
+  } finally {
+    button.disabled = false;
+    state.pendingGoogleRemove = null;
+  }
+}
+function clearSignedInAccount() {
+  controller?.abort();
+  sequence++;
+  clearTimeout(livePollTimer);
+  clearTimeout(newsPollTimer);
+  state.accountId = '';
+  state.plan = [];
+  state.warning = '';
+  state.googleSelected = [];
+  state.googleResult = {};
+  state.awsReserved = new Set();
+  state.awsFavorites = new Set();
+  state.awsPersonalTimes = [];
+  state.awsScheduleStatus = 'idle';
+  state.awsScheduleFetchedAt = 0;
+  state.catalogMeta = null;
+  state.sessions = [];
+  state.catalog = createCatalog([]);
+  state.byId = new Map(state.sideEvents.map((item) => [item.id, item]));
+  state.status = 'unauthenticated';
+  state.planDate = '';
+  state.reservationSelection = new Set();
+  state.reservationResults = null;
+  state.reservationStage = 'select';
+}
+function openAwsSignOut() {
+  openDialog('awsSignOutDialog');
+}
+async function signOutAppOnly() {
+  const button = $('#signOutAppOnly');
+  button.disabled = true;
+  try {
+    await signOutAws();
+    clearSignedInAccount();
+    $('#awsSignOutDialog').close();
+    render();
+    notify(
+      t('このアプリからサインアウトしました。Builder IDのブラウザーセッションは維持しています。'),
+    );
+  } catch {
+    notify(
+      t('AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。'),
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+async function switchBuilderId() {
+  const button = $('#switchBuilderId');
+  button.disabled = true;
+  try {
+    const url = await signOutBuilderId();
+    $('#awsSignOutDialog').close();
+    if (typeof url === 'string') window.location.assign(url);
+  } catch {
+    notify(
+      t('AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。'),
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+async function refreshLive() {
+  try {
+    await Promise.all([requestCatalogRefresh(), refreshAwsSchedule({ force: true })]);
+    state.status = state.sessions.length ? 'ready' : 'loading';
+    render();
+    scheduleLivePoll(sequence);
+  } catch (error) {
+    notify(
+      error.message === 'SIGN_IN_REQUIRED'
+        ? t('AWSへサインインしてください。')
+        : t('AWSカタログを更新できませんでした。'),
+    );
+  }
+}
+$('#q').value = state.filters.query;
+$('#languageSwitch').addEventListener('change', () => {
+  setLanguage($('#languageSwitch').value, storage);
+  applyStaticLanguage();
+  render();
+  if (state.detailId && byId(state.detailId)) renderCurrentDetail();
+  if ($('#compareDialog').open)
+    $('#compareContent').innerHTML = renderComparison(
+      state.comparison.map(byId).filter(Boolean),
+      new Set(state.plan),
+      conflictMap(plannerItems()),
+    );
+  if ($('#filterDialog').open) openFilters({ preserveDraft: true });
+  if ($('#googleSyncDialog').open) openGoogleSyncConfirmation();
+  if ($('#googleRemoveDialog').open) openGoogleRemoveConfirmation(state.pendingGoogleRemove);
+  if ($('#reservationDialog').open) renderReservationDialog();
+  $('#toast').hidden = true;
 });
-$('#showSessionItems').addEventListener('click',()=>setExploreKind('sessions'));
-$('#showSideEvents').addEventListener('click',()=>setExploreKind('sideEvents'));
-$('#showAwsFavorites').addEventListener('click',()=>setExploreKind('favorites'));
-$('#addPersonalTime').addEventListener('click',()=>openPersonalTime());$('#personalTimeForm').addEventListener('submit',submitPersonalTime);$('#personalTimeDelete').addEventListener('click',()=>openPersonalTimeDelete(editingPersonalTimeId));$('#confirmPersonalTimeDelete').addEventListener('click',deletePersonalTime);
-$('#demoMode').addEventListener('click',()=>switchSource('demo'));
-$('#liveMode').addEventListener('click',()=>switchSource('live'));
-$('#signIn').addEventListener('click',beginSignIn);
-$('#refreshLive').addEventListener('click',refreshLive);
-$('#signOut').addEventListener('click',openAwsSignOut);
-$('#signOutAppOnly').addEventListener('click',signOutAppOnly);
-$('#switchBuilderId').addEventListener('click',switchBuilderId);
-$('#googleSettings').addEventListener('click',()=>openDialog('googleSetupDialog'));
-$('#reservePlanned').addEventListener('click',openReservationDialog);
-$('#manageReservations').addEventListener('click',()=>openReservationDialog('cancel'));
- $('#refreshSchedule').addEventListener('click',()=>void refreshAwsSchedule({force:true}));
-$('#reservationNext').addEventListener('click',()=>{if(state.reservationBusy)return;if(state.reservationStage==='select'){if(state.reservationSelection.size){state.reservationStage='confirm';renderReservationDialog();}}else if(state.reservationStage==='confirm'){if(state.reservationMode==='cancel')submitReservationCancellations();else submitReservationBatch();}});
-$('#reservationBack').addEventListener('click',event=>{if(state.reservationStage==='confirm'){event.preventDefault();state.reservationStage='select';renderReservationDialog();}});
-$('#googleConnect').addEventListener('click',beginGoogleConnect);
-$('#googleSync').addEventListener('click',openGoogleSyncConfirmation);
-$('#saveGoogleClient').addEventListener('click',saveGoogleClient);
-$('#confirmGoogleSync').addEventListener('click',confirmGoogleSync);
-$('#confirmGoogleRemove').addEventListener('click',confirmGoogleRemove);
-document.addEventListener('change',event=>{const reservationId=event.target.dataset?.reservationSelect;if(reservationId){if(event.target.checked&&state.reservationSelection.size>=10){event.target.checked=false;return;}state.reservationSelection=event.target.checked?new Set([...state.reservationSelection,reservationId]):new Set([...state.reservationSelection].filter(value=>value!==reservationId));renderReservationDialog();return;}const id=event.target.dataset?.googleSelect;if(!id)return;const planIds=new Set(plannerItems().map(item=>item.id)),activeSelection=state.googleSelected.filter(value=>planIds.has(value));if(event.target.checked&&activeSelection.length>=50){event.target.checked=false;notify(t('一度に同期できる予定は50件までです'));return;}state.googleSelected=event.target.checked?[...new Set([...state.googleSelected,id])]:state.googleSelected.filter(value=>value!==id);saveGoogleSelection();updateGoogleSelectionUI();});
-$('#googleEventChoices').addEventListener('click',event=>{const button=event.target.closest('[data-google-remove]');if(button&&!button.disabled)openGoogleRemoveConfirmation(button.dataset.googleRemove);});
-$('#q').addEventListener('input',()=>{state.filters.query=$('#q').value;clearTimeout(searchTimer);searchTimer=setTimeout(()=>commitSearch({push:false}),90);});
-$('#clearSearch').addEventListener('click',()=>{state.filters.query='';$('#q').value='';commitSearch();$('#q').focus();});
-$('#openFilters').addEventListener('click',openFilters);
-$('#filterForm').addEventListener('submit',event=>{event.preventDefault();const from=$('#from').value,to=$('#to').value;if(from&&to&&minutes(from)>=minutes(to)){$('#timeError').hidden=false;$('#to').focus();return;}state.filters={...state.draft,query:state.filters.query,from,to,fit:$('#fitContained').checked?'contained':'overlap'};commitSearch();$('#filterDialog').close();});
-$('#resetFilters').addEventListener('click',()=>{resetFilters();openFilters();});
-for(const [id,value] of [['showSessions','explore'],['showPlan','plan'],['mobileExplore','explore'],['mobilePlan','plan']])$('#'+id).addEventListener('click',()=>changeActive(value));
-for(const [id,value] of [['cardView','card'],['compactView','compact']])$('#'+id).addEventListener('click',()=>{state.view=value;try{storage.setItem('reinvent-view',value);}catch{}commitSearch();});
-$('#sort').addEventListener('change',()=>{state.sort=$('#sort').value;commitSearch();});
-$('#planDate').addEventListener('change',()=>{state.planDate=$('#planDate').value;render();const scroll=$('#planContent').querySelector?.('.timeline-scroll');if(scroll)scroll.scrollTop=0;});
-$('#todayPlan').addEventListener('click',()=>{state.planDate=venueToday();render();});
-for(const [id,value] of [['listView','list'],['timelineView','timeline']])$('#'+id).addEventListener('click',()=>{state.planView=value;if(value==='timeline'&&state.planDate==='all')state.planDate=chosen().find(s=>s.date)?.date||state.sessions.find(s=>s.date)?.date||'';render();});
-function downloadPlanIcs(){const items=plannerItems(),result=createCalendarIcs(items);if(!result.exported){notify(t('日時が確定した候補がないため、ICSを書き出せません。'));return;}const url=URL.createObjectURL(new Blob([result.content],{type:'text/calendar;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='reinvent2026-plan.ics';document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);notify(ui`${result.exported}件を書き出しました${result.skipped?ui` · 日時未定の${result.skipped}件は対象外です`:''}`);}$('#exportCalendar').addEventListener('click',downloadPlanIcs);$('#clearPlan').addEventListener('click',()=>openDialog('clearDialog'));$('#confirmClear').addEventListener('click',()=>{state.plan=[];savePlan();$('#clearDialog').close();notify(t('My Planをすべて削除しました'));});$('#detailDialog').addEventListener('close',()=>state.detailId=null);
-for(const id of ['filterDialog','detailDialog','compareDialog','clearDialog','reservationDialog'])$('#'+id).addEventListener('click',event=>{if(event.target===$('#'+id)){const b=event.target.getBoundingClientRect();if(event.clientX<b.left||event.clientX>b.right||event.clientY<b.top||event.clientY>b.bottom)event.target.close();}});
-document.addEventListener('input',event=>{const key=event.target.dataset?.facetSearch;if(key&&state.draft)$('#facet-'+key).innerHTML=renderFacetOptions(key,event.target.value);});
-document.addEventListener('change',event=>{const key=event.target.dataset?.facet;if(!key||!state.draft)return;const value=event.target.value;state.draft[key]=event.target.checked?[...new Set([...state.draft[key],value])]:state.draft[key].filter(x=>x!==value);});
-document.addEventListener('click',event=>{const button=event.target.closest('button');if(button){if(button.disabled)return;const d=button.dataset;if(d.close){$('#'+d.close).close();return;}if(d.detail){openDetail(d.detail);return;}if(d.plan){setPlan(d.plan,!state.plan.includes(d.plan));return;}if(d.removePlan){state.plan=state.plan.filter(id=>id!==d.removePlan);savePlan();notify(t('My Planから削除しました'));return;}if(d.editPersonalTime){const item=state.awsPersonalTimes.find(value=>value.personalTimeId===d.editPersonalTime);if(item)openPersonalTime(item);return;}if(d.deletePersonalTime){openPersonalTimeDelete(d.deletePersonalTime);return;}if(d.quickKey){if(d.quickKey==="minLevel"){const active=Number(state.filters.minLevel)===Number(d.quickValue);state.filters.minLevel=active?null:Number(d.quickValue);state.filters.levelDefaultSuppressed=active;}else if(d.quickKey==="includeUnleveled"){state.filters.includeUnleveled=!state.filters.includeUnleveled;}else{const list=state.filters[d.quickKey];state.filters[d.quickKey]=list.includes(d.quickValue)?list.filter(v=>v!==d.quickValue):[...list,d.quickValue];}commitSearch();return;}if(d.removeFilter){if(d.removeFilter==="time"){state.filters.from="";state.filters.to="";state.filters.fit="overlap";}else if(d.removeFilter==="minLevel"){state.filters.minLevel=null;state.filters.levelDefaultSuppressed=true;}else if(d.removeFilter==="includeUnleveled"){state.filters.includeUnleveled=false;}else state.filters[d.removeFilter]=state.filters[d.removeFilter].filter(v=>v!==d.filterValue);commitSearch();return;}if(d.compareToggle){toggleCompare(d.compareToggle);return;}if(d.conflictCompare){const matches=conflictMap(plannerItems()).get(d.conflictCompare)||[];openCompare([d.conflictCompare,...matches.map(s=>s.id)]);return;}if(d.gapStart){findGap(d.gapDate,d.gapStart,d.gapEnd);return;}if(d.action==='retry')load();if(d.action==='signIn')beginSignIn();if(d.action==='more'){displayLimit+=40;renderExplore(conflictMap(plannerItems()));}if(d.action==='resetAll')resetFilters(true);if(d.action==='resetFilters')resetFilters();if(d.action==='browse'){changeActive('explore');$('#q').focus();}if(d.action==='compareSelected')openCompare(state.compare);if(d.action==='clearCompare'){state.compare=[];render();}return;}if(event.target.closest('a,input,select,label'))return;const card=event.target.closest('[data-card-detail]');if(card)openDetail(card.dataset.cardDetail);});
-window.addEventListener('popstate',()=>{const parsed=readSearchState(window.location.href);state.filters=parsed.filters;state.view=parsed.view;state.sort=parsed.sort;state.exploreKind=parsed.kind;buildFacets();$('#q').value=state.filters.query;displayLimit=40;clearTimeout(searchTimer);render();});
+$('#showSessionItems').addEventListener('click', () => setExploreKind('sessions'));
+$('#showSideEvents').addEventListener('click', () => setExploreKind('sideEvents'));
+$('#showAwsFavorites').addEventListener('click', () => setExploreKind('favorites'));
+$('#showRecommendations').addEventListener('click', () => setExploreView('recommendations'));
+$('#addPersonalTime').addEventListener('click', () => openPersonalTime());
+$('#personalTimeForm').addEventListener('submit', submitPersonalTime);
+$('#personalTimeDelete').addEventListener('click', () =>
+  openPersonalTimeDelete(editingPersonalTimeId),
+);
+$('#confirmPersonalTimeDelete').addEventListener('click', deletePersonalTime);
+$('#demoMode').addEventListener('click', () => switchSource('demo'));
+$('#liveMode').addEventListener('click', () => switchSource('live'));
+$('#signIn').addEventListener('click', beginSignIn);
+$('#refreshLive').addEventListener('click', refreshLive);
+$('#signOut').addEventListener('click', openAwsSignOut);
+$('#signOutAppOnly').addEventListener('click', signOutAppOnly);
+$('#switchBuilderId').addEventListener('click', switchBuilderId);
+$('#googleSettings').addEventListener('click', () => openDialog('googleSetupDialog'));
+$('#reservePlanned').addEventListener('click', openReservationDialog);
+$('#manageReservations').addEventListener('click', () => openReservationDialog('cancel'));
+$('#refreshSchedule').addEventListener('click', () => void refreshAwsSchedule({ force: true }));
+$('#reservationNext').addEventListener('click', () => {
+  if (state.reservationBusy) return;
+  if (state.reservationStage === 'select') {
+    if (state.reservationSelection.size) {
+      state.reservationStage = 'confirm';
+      renderReservationDialog();
+    }
+  } else if (state.reservationStage === 'confirm') {
+    if (state.reservationMode === 'cancel') submitReservationCancellations();
+    else submitReservationBatch();
+  }
+});
+$('#reservationBack').addEventListener('click', (event) => {
+  if (state.reservationStage === 'confirm') {
+    event.preventDefault();
+    state.reservationStage = 'select';
+    renderReservationDialog();
+  }
+});
+$('#googleConnect').addEventListener('click', beginGoogleConnect);
+$('#googleSync').addEventListener('click', openGoogleSyncConfirmation);
+$('#saveGoogleClient').addEventListener('click', saveGoogleClient);
+$('#confirmGoogleSync').addEventListener('click', confirmGoogleSync);
+$('#confirmGoogleRemove').addEventListener('click', confirmGoogleRemove);
+document.addEventListener('change', (event) => {
+  const reservationId = event.target.dataset?.reservationSelect;
+  if (reservationId) {
+    if (event.target.checked && state.reservationSelection.size >= 10) {
+      event.target.checked = false;
+      return;
+    }
+    state.reservationSelection = event.target.checked
+      ? new Set([...state.reservationSelection, reservationId])
+      : new Set([...state.reservationSelection].filter((value) => value !== reservationId));
+    renderReservationDialog();
+    return;
+  }
+  const id = event.target.dataset?.googleSelect;
+  if (!id) return;
+  const planIds = new Set(plannerItems().map((item) => item.id)),
+    activeSelection = state.googleSelected.filter((value) => planIds.has(value));
+  if (event.target.checked && activeSelection.length >= 50) {
+    event.target.checked = false;
+    notify(t('一度に同期できる予定は50件までです'));
+    return;
+  }
+  state.googleSelected = event.target.checked
+    ? [...new Set([...state.googleSelected, id])]
+    : state.googleSelected.filter((value) => value !== id);
+  saveGoogleSelection();
+  updateGoogleSelectionUI();
+});
+$('#googleEventChoices').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-google-remove]');
+  if (button && !button.disabled) openGoogleRemoveConfirmation(button.dataset.googleRemove);
+});
+$('#q').addEventListener('input', () => {
+  state.filters.query = $('#q').value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => commitSearch({ push: false }), 90);
+});
+$('#clearSearch').addEventListener('click', () => {
+  state.filters.query = '';
+  $('#q').value = '';
+  commitSearch();
+  $('#q').focus();
+});
+$('#openFilters').addEventListener('click', openFilters);
+$('#filterForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const from = $('#from').value,
+    to = $('#to').value;
+  if (from && to && minutes(from) >= minutes(to)) {
+    $('#timeError').hidden = false;
+    $('#to').focus();
+    return;
+  }
+  state.filters = {
+    ...state.draft,
+    query: state.filters.query,
+    from,
+    to,
+    fit: $('#fitContained').checked ? 'contained' : 'overlap',
+  };
+  commitSearch();
+  $('#filterDialog').close();
+});
+$('#resetFilters').addEventListener('click', () => {
+  resetFilters();
+  openFilters();
+});
+for (const [id, value] of [
+  ['showSessions', 'explore'],
+  ['showPlan', 'plan'],
+  ['mobileExplore', 'explore'],
+  ['mobilePlan', 'plan'],
+])
+  $('#' + id).addEventListener('click', () => changeActive(value));
+for (const [id, value] of [
+  ['cardView', 'card'],
+  ['compactView', 'compact'],
+])
+  $('#' + id).addEventListener('click', () => {
+    state.view = value;
+    try {
+      storage.setItem('reinvent-view', value);
+    } catch {}
+    commitSearch();
+  });
+$('#sort').addEventListener('change', () => {
+  state.sort = $('#sort').value;
+  commitSearch();
+});
+$('#planDate').addEventListener('change', () => {
+  state.planDate = $('#planDate').value;
+  render();
+  const scroll = $('#planContent').querySelector?.('.timeline-scroll');
+  if (scroll) scroll.scrollTop = 0;
+});
+$('#todayPlan').addEventListener('click', () => {
+  state.planDate = venueToday();
+  render();
+});
+for (const [id, value] of [
+  ['listView', 'list'],
+  ['timelineView', 'timeline'],
+])
+  $('#' + id).addEventListener('click', () => {
+    state.planView = value;
+    if (value === 'timeline' && state.planDate === 'all')
+      state.planDate =
+        chosen().find((s) => s.date)?.date || state.sessions.find((s) => s.date)?.date || '';
+    render();
+  });
+function downloadPlanIcs() {
+  const items = plannerItems(),
+    result = createCalendarIcs(items);
+  if (!result.exported) {
+    notify(t('日時が確定した候補がないため、ICSを書き出せません。'));
+    return;
+  }
+  const url = URL.createObjectURL(
+    new Blob([result.content], { type: 'text/calendar;charset=utf-8' }),
+  );
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'reinvent2026-plan.ics';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  notify(
+    ui`${result.exported}件を書き出しました${result.skipped ? ui` · 日時未定の${result.skipped}件は対象外です` : ''}`,
+  );
+}
+$('#exportCalendar').addEventListener('click', downloadPlanIcs);
+$('#clearPlan').addEventListener('click', () => openDialog('clearDialog'));
+$('#confirmClear').addEventListener('click', () => {
+  state.plan = [];
+  savePlan();
+  $('#clearDialog').close();
+  notify(t('My Planをすべて削除しました'));
+});
+$('#detailDialog').addEventListener('close', () => (state.detailId = null));
+for (const id of [
+  'filterDialog',
+  'detailDialog',
+  'compareDialog',
+  'clearDialog',
+  'reservationDialog',
+])
+  $('#' + id).addEventListener('click', (event) => {
+    if (event.target === $('#' + id)) {
+      const b = event.target.getBoundingClientRect();
+      if (
+        event.clientX < b.left ||
+        event.clientX > b.right ||
+        event.clientY < b.top ||
+        event.clientY > b.bottom
+      )
+        event.target.close();
+    }
+  });
+document.addEventListener('input', (event) => {
+  const key = event.target.dataset?.facetSearch;
+  if (key && state.draft)
+    $('#facet-' + key).innerHTML = renderFacetOptions(key, event.target.value);
+});
+document.addEventListener('change', (event) => {
+  const key = event.target.dataset?.facet;
+  if (!key || !state.draft) return;
+  const value = event.target.value;
+  state.draft[key] = event.target.checked
+    ? [...new Set([...state.draft[key], value])]
+    : state.draft[key].filter((x) => x !== value);
+});
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (button) {
+    if (button.disabled) return;
+    const d = button.dataset;
+    if (d.close) {
+      $('#' + d.close).close();
+      return;
+    }
+    if (d.detail) {
+      openDetail(d.detail);
+      return;
+    }
+    if (d.plan) {
+      setPlan(d.plan, !state.plan.includes(d.plan));
+      return;
+    }
+    if (d.removePlan) {
+      state.plan = state.plan.filter((id) => id !== d.removePlan);
+      savePlan();
+      notify(t('My Planから削除しました'));
+      return;
+    }
+    if (d.editPersonalTime) {
+      const item = state.awsPersonalTimes.find(
+        (value) => value.personalTimeId === d.editPersonalTime,
+      );
+      if (item) openPersonalTime(item);
+      return;
+    }
+    if (d.deletePersonalTime) {
+      openPersonalTimeDelete(d.deletePersonalTime);
+      return;
+    }
+    if (d.quickKey) {
+      if (d.quickKey === 'minLevel') {
+        const active = Number(state.filters.minLevel) === Number(d.quickValue);
+        state.filters.minLevel = active ? null : Number(d.quickValue);
+        state.filters.levelDefaultSuppressed = active;
+      } else if (d.quickKey === 'includeUnleveled') {
+        state.filters.includeUnleveled = !state.filters.includeUnleveled;
+      } else {
+        const list = state.filters[d.quickKey];
+        state.filters[d.quickKey] = list.includes(d.quickValue)
+          ? list.filter((v) => v !== d.quickValue)
+          : [...list, d.quickValue];
+      }
+      commitSearch();
+      return;
+    }
+    if (d.removeFilter) {
+      if (d.removeFilter === 'time') {
+        state.filters.from = '';
+        state.filters.to = '';
+        state.filters.fit = 'overlap';
+      } else if (d.removeFilter === 'minLevel') {
+        state.filters.minLevel = null;
+        state.filters.levelDefaultSuppressed = true;
+      } else if (d.removeFilter === 'includeUnleveled') {
+        state.filters.includeUnleveled = false;
+      } else
+        state.filters[d.removeFilter] = state.filters[d.removeFilter].filter(
+          (v) => v !== d.filterValue,
+        );
+      commitSearch();
+      return;
+    }
+    if (d.compareToggle) {
+      toggleCompare(d.compareToggle);
+      return;
+    }
+    if (d.conflictCompare) {
+      const matches = conflictMap(plannerItems()).get(d.conflictCompare) || [];
+      openCompare([d.conflictCompare, ...matches.map((s) => s.id)]);
+      return;
+    }
+    if (d.gapStart) {
+      findGap(d.gapDate, d.gapStart, d.gapEnd);
+      return;
+    }
+    if (d.action === 'retry') load();
+    if (d.action === 'signIn') beginSignIn();
+    if (d.action === 'more') {
+      displayLimit += 40;
+      renderExplore(conflictMap(plannerItems()));
+    }
+    if (d.action === 'resetAll') resetFilters(true);
+    if (d.action === 'resetFilters') resetFilters();
+    if (d.action === 'browse') {
+      changeActive('explore');
+      $('#q').focus();
+    }
+    if (d.action === 'compareSelected') openCompare(state.compare);
+    if (d.action === 'clearCompare') {
+      state.compare = [];
+      render();
+    }
+    return;
+  }
+  if (event.target.closest('a,input,select,label')) return;
+  const card = event.target.closest('[data-card-detail]');
+  if (card) openDetail(card.dataset.cardDetail);
+});
+window.addEventListener('popstate', () => {
+  const parsed = readSearchState(window.location.href);
+  state.filters = parsed.filters;
+  state.view = parsed.view;
+  state.sort = parsed.sort;
+  state.exploreKind = parsed.kind;
+  buildFacets();
+  $('#q').value = state.filters.query;
+  displayLimit = 40;
+  clearTimeout(searchTimer);
+  render();
+});
 // WebMCP is a browser-scoped prototype. Plan edits stay local to this tab and
 // never call AWS reservation or cancellation endpoints.
-if(document.modelContext?.registerTool){
- const lifecycle=new AbortController();
- const register=tool=>{try{Promise.resolve(document.modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}};
- const sessionSummary=s=>({id:s.id,code:s.code,title:s.title,date:s.date,startTime:s.startTime,endTime:s.endTime,venue:s.venue,sessionType:s.sessionType,level:s.level});
- register({name:'search_sessions',description:'Search sessions in the currently loaded catalog using the app search and filters. This reads catalog data and updates the visible results; it does not reserve sessions.',inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query'],additionalProperties:false},annotations:{readOnlyHint:true},execute(input){if(typeof input?.query!=='string')throw new Error('query must be a string');state.filters.query=input.query;$('#q').value=input.query;commitSearch({push:false});changeActive('explore');return {dataSource:state.source,count:results().length,sessions:results().slice(0,40).map(sessionSummary)};}});
- register({name:'get_my_plan',description:'Read this browser profile’s planner: local picks, AWS reservations, and AWS personal time. Personal-time changes are managed in the app and written to AWS Schedule after explicit confirmation. AWS favorites are returned separately.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute(){return {dataSource:state.source,accountScoped:state.source==='live'&&!!state.accountId,awsScheduleStatus:state.awsScheduleStatus,localSessionIds:[...state.plan],awsFavoriteSessionIds:[...state.awsFavorites],sessions:plannerItems().map(s=>({...sessionSummary(s),planned:state.plan.includes(s.id),awsReserved:state.awsReserved.has(s.id),awsPersonalTime:s.itemType==='personalTime'})),missingSessionIds:state.plan.filter(id=>!byId(id))};}});
- register({name:'check_schedule_conflicts',description:'Check local time overlaps between loaded sessions, local picks, reservations, and personal time imported from AWS Schedule. It does not change any AWS reservation.',inputSchema:{type:'object',properties:{sessionIds:{type:'array',items:{type:'string'},maxItems:100}},required:['sessionIds'],additionalProperties:false},annotations:{readOnlyHint:true},execute(input){if(!Array.isArray(input?.sessionIds)||input.sessionIds.length>100||input.sessionIds.some(id=>typeof id!=='string'))throw new Error('sessionIds must be an array of at most 100 strings');const ids=[...new Set([...plannerItems().map(item=>item.id),...input.sessionIds])],items=ids.map(byId).filter(Boolean),conflicts=conflictMap(items),pairs=[],seen=new Set();for(const id of input.sessionIds){const session=byId(id);if(!session)continue;for(const other of conflicts.get(id)||[]){const key=[id,other.id].sort().join('\u0000');if(seen.has(key))continue;seen.add(key);pairs.push({session:sessionSummary(session),conflictsWith:sessionSummary(other)});}}return {checkedSessionIds:input.sessionIds,missingSessionIds:input.sessionIds.filter(id=>!byId(id)),conflicts:pairs};}});
- register({name:'set_my_plan_session',description:'Add or remove one loaded session from this browser’s account-scoped My Plan. This is a local plan edit only; it does not reserve or cancel an AWS session.',inputSchema:{type:'object',properties:{id:{type:'string'},included:{type:'boolean'}},required:['id','included'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input){if(typeof input?.id!=='string'||typeof input.included!=='boolean')throw new Error('id and included required');setPlan(input.id,input.included);return {sessionIds:[...state.plan],plan:chosen().map(sessionSummary),awsReservationChanged:false};}});
- window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
+if (document.modelContext?.registerTool) {
+  const lifecycle = new AbortController();
+  const register = (tool) => {
+    try {
+      Promise.resolve(document.modelContext.registerTool(tool, { signal: lifecycle.signal })).catch(
+        () => {},
+      );
+    } catch {}
+  };
+  const sessionSummary = (s) => ({
+    id: s.id,
+    code: s.code,
+    title: s.title,
+    date: s.date,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    venue: s.venue,
+    sessionType: s.sessionType,
+    level: s.level,
+  });
+  register({
+    name: 'search_sessions',
+    description:
+      'Search sessions in the currently loaded catalog using the app search and filters. This reads catalog data and updates the visible results; it does not reserve sessions.',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    execute(input) {
+      if (typeof input?.query !== 'string') throw new Error('query must be a string');
+      state.filters.query = input.query;
+      $('#q').value = input.query;
+      commitSearch({ push: false });
+      changeActive('explore');
+      return {
+        dataSource: state.source,
+        count: results().length,
+        sessions: results().slice(0, 40).map(sessionSummary),
+      };
+    },
+  });
+  register({
+    name: 'get_my_plan',
+    description:
+      'Read this browser profile’s planner: local picks, AWS reservations, and AWS personal time. Personal-time changes are managed in the app and written to AWS Schedule after explicit confirmation. AWS favorites are returned separately.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    execute() {
+      return {
+        dataSource: state.source,
+        accountScoped: state.source === 'live' && !!state.accountId,
+        awsScheduleStatus: state.awsScheduleStatus,
+        localSessionIds: [...state.plan],
+        awsFavoriteSessionIds: [...state.awsFavorites],
+        sessions: plannerItems().map((s) => ({
+          ...sessionSummary(s),
+          planned: state.plan.includes(s.id),
+          awsReserved: state.awsReserved.has(s.id),
+          awsPersonalTime: s.itemType === 'personalTime',
+        })),
+        missingSessionIds: state.plan.filter((id) => !byId(id)),
+      };
+    },
+  });
+  register({
+    name: 'check_schedule_conflicts',
+    description:
+      'Check local time overlaps between loaded sessions, local picks, reservations, and personal time imported from AWS Schedule. It does not change any AWS reservation.',
+    inputSchema: {
+      type: 'object',
+      properties: { sessionIds: { type: 'array', items: { type: 'string' }, maxItems: 100 } },
+      required: ['sessionIds'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    execute(input) {
+      if (
+        !Array.isArray(input?.sessionIds) ||
+        input.sessionIds.length > 100 ||
+        input.sessionIds.some((id) => typeof id !== 'string')
+      )
+        throw new Error('sessionIds must be an array of at most 100 strings');
+      const ids = [...new Set([...plannerItems().map((item) => item.id), ...input.sessionIds])],
+        items = ids.map(byId).filter(Boolean),
+        conflicts = conflictMap(items),
+        pairs = [],
+        seen = new Set();
+      for (const id of input.sessionIds) {
+        const session = byId(id);
+        if (!session) continue;
+        for (const other of conflicts.get(id) || []) {
+          const key = [id, other.id].sort().join('\u0000');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          pairs.push({ session: sessionSummary(session), conflictsWith: sessionSummary(other) });
+        }
+      }
+      return {
+        checkedSessionIds: input.sessionIds,
+        missingSessionIds: input.sessionIds.filter((id) => !byId(id)),
+        conflicts: pairs,
+      };
+    },
+  });
+  register({
+    name: 'set_my_plan_session',
+    description:
+      'Add or remove one loaded session from this browser’s account-scoped My Plan. This is a local plan edit only; it does not reserve or cancel an AWS session.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' }, included: { type: 'boolean' } },
+      required: ['id', 'included'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false },
+    execute(input) {
+      if (typeof input?.id !== 'string' || typeof input.included !== 'boolean')
+        throw new Error('id and included required');
+      setPlan(input.id, input.included);
+      return {
+        sessionIds: [...state.plan],
+        plan: chosen().map(sessionSummary),
+        awsReservationChanged: false,
+      };
+    },
+  });
+  window.addEventListener('pagehide', () => lifecycle.abort(), { once: true });
 }
 initialize();
 // Refresh dated recommendation evidence when a backgrounded tab becomes active.
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();void refreshAwsSchedule();refreshGoogleStatus();}});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    render();
+    void refreshAwsSchedule();
+    refreshGoogleStatus();
+  }
+});
