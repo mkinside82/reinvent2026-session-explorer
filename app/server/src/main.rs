@@ -230,6 +230,7 @@ struct CatalogResponse {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SessionResponse {
     csrf: String,
     authenticated: bool,

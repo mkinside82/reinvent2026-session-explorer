@@ -154,7 +154,7 @@ const FACET_LABELS = {
   topic: 'Topic',
   level: 'Level',
   sessionType: 'Session Type',
-  venue: '場所',
+  venue: '会場',
   service: 'Service',
   speaker: 'Speaker',
 };
@@ -174,6 +174,22 @@ const currentPlanKey = () =>
     : state.source === 'live'
       ? ui`${PLAN_KEY}:aws:reinvent2026:${state.accountId || 'guest'}`
       : null;
+const LIVE_ACCOUNT_KEY = 'reinvent-live-last-account';
+function rememberedLiveAccountId() {
+  try {
+    const value = storage.getItem(LIVE_ACCOUNT_KEY) || '';
+    return /^[a-f0-9]{64}$/.test(value) ? value : '';
+  } catch {
+    return '';
+  }
+}
+function rememberLiveAccountId(accountId) {
+  if (!/^[a-f0-9]{64}$/.test(accountId || '')) return;
+  try {
+    storage.setItem(LIVE_ACCOUNT_KEY, accountId);
+  } catch {}
+}
+const livePlanKey = (accountId) => `${PLAN_KEY}:aws:reinvent2026:${accountId || 'guest'}`;
 const googleSelectionKey = () => ui`reinvent-google-selected:${currentPlanKey() || 'demo'}`;
 function readGoogleSelection() {
   try {
@@ -1514,15 +1530,21 @@ async function initialize() {
   applySessions([]);
   if (runtimeMode === 'live') {
     state.source = 'live';
-    state.plan = [];
-    state.warning = '';
+    const guestPlanKey = livePlanKey('guest');
+    const rememberedAccountId = rememberedLiveAccountId();
+    const fallbackPlan = readPlan(storage, livePlanKey(rememberedAccountId || 'guest'));
+    const guestPlan = rememberedAccountId
+      ? readPlan(storage, guestPlanKey)
+      : { ids: [], warning: '' };
+    state.plan = [...new Set([...fallbackPlan.ids, ...guestPlan.ids])];
+    state.warning = fallbackPlan.warning || guestPlan.warning;
     try {
       const session = await localSessionStatus();
       state.localApiAvailable = true;
       if (session.authenticated && session.accountId) {
         state.accountId = session.accountId;
+        rememberLiveAccountId(state.accountId);
         let plan = readPlan(storage, currentPlanKey());
-        const guestPlanKey = `${PLAN_KEY}:aws:reinvent2026:guest`;
         const guestPlan = readPlan(storage, guestPlanKey);
         if (guestPlan.ids.length) {
           const ids = [...new Set([...plan.ids, ...guestPlan.ids])];
@@ -1534,9 +1556,9 @@ async function initialize() {
         state.warning = plan.warning;
         void refreshAwsSchedule();
       } else {
-        const plan = readPlan(storage, currentPlanKey());
-        state.plan = plan.ids;
-        state.warning = plan.warning;
+        const localPlan = readPlan(storage, currentPlanKey());
+        state.plan = [...new Set([...state.plan, ...localPlan.ids])];
+        state.warning ||= localPlan.warning;
       }
       state.googleSelected = readGoogleSelection();
       try {

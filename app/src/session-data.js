@@ -148,6 +148,13 @@ export function normalizeAwsSession(row) {
   const speakers = list(row.speakers)
     .map((s) => (typeof s === 'string' ? s : s?.name))
     .filter((v) => typeof v === 'string');
+  const venue = typeof row.venue === 'string' ? row.venue.trim() : '';
+  const room = typeof row.room === 'string' ? row.room.trim() : '';
+  const [firstLocationPart, ...remainingLocationParts] = room.split(/\s*\|\s*/);
+  const location =
+    !venue && remainingLocationParts.length
+      ? { venue: firstLocationPart, room: remainingLocationParts.join(' | ') }
+      : { venue, room };
   return normalizeSession({
     id: row.sessionId,
     code: row.abbreviation,
@@ -166,8 +173,8 @@ export function normalizeAwsSession(row) {
     roles: [...list(row.roles), ...list(row.customerPersonas)],
     services: row.services,
     speakers,
-    venue: row.venue,
-    room: row.room,
+    venue: location.venue,
+    room: location.room,
     keywords: [
       ...list(row.segments),
       ...list(row.features),
