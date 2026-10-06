@@ -72,6 +72,20 @@ export function adaptAwsSessions(raw){
   const seen=new Set();
   return raw.map(normalizeAwsSession).filter(s=>{if(!s||seen.has(s.id))return false;seen.add(s.id);return true;});
 }
+/** Maps AWS Schedule personal-time blocks from UTC into the venue's local time. */
+export function adaptAwsPersonalTimes(raw){
+  if(!Array.isArray(raw))throw new Error('INVALID_RESPONSE');
+  const seen=new Set();
+  return raw.map(row=>{
+    if(!row||typeof row!=='object'||typeof row.personalTimeId!=='string'||!row.personalTimeId.trim())return null;
+    const start=row.startDateTime,end=row.endDateTime,valid=value=>typeof value==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value)&&!Number.isNaN(Date.parse(`${value}Z`));
+    if(!valid(start)||!valid(end))return null;
+    const startEpoch=Date.parse(`${start}Z`),endEpoch=Date.parse(`${end}Z`);if(endEpoch<=startEpoch)return null;
+    const localStart=partsInZone(startEpoch,'America/Los_Angeles'),localEnd=partsInZone(endEpoch,'America/Los_Angeles'),sameDate=localStart.year===localEnd.year&&localStart.month===localEnd.month&&localStart.day===localEnd.day;
+    const id=`aws-personal:${row.personalTimeId}`;if(seen.has(id))return null;seen.add(id);
+    return normalizeSession({id,code:'PERSONAL',title:typeof row.title==='string'?row.title:'Personal time',abstract:typeof row.description==='string'?row.description:'',date:`${localStart.year}-${localStart.month}-${localStart.day}`,startTime:`${localStart.hour}:${localStart.minute}`,endTime:sameDate?`${localEnd.hour}:${localEnd.minute}`:'',sessionType:'Personal time',venue:typeof row.location==='string'?row.location:'',dataSource:'aws-personal-time',itemType:'personalTime',uiState:{personalTime:true}});
+  }).filter(Boolean);
+}
 export function normalizeSideEvent(row){
   if(!row||typeof row!=='object'||typeof row.id!=='string'||typeof row.title!=='string'||typeof row.sourceUrl!=='string'||!row.sourceUrl.startsWith('https://'))return null;
   const date=typeof row.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.date)?row.date:'';
