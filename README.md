@@ -38,12 +38,12 @@ AWS Events APIから実カタログを取得します。サインインや通信
 
 ### プレビュー（サンプルデータ）
 
-認証なしで画面を見たい場合はプレビューを起動してください。Node.jsだけで実行でき、AWSやGoogleのAPIには接続しません。
+認証なしで画面を見たい場合はプレビューを起動してください。Node.jsとpnpmが必要です。AWSやGoogleのAPIには接続しません。
 
 ```sh
-cd app
-npm run build
-npm run demo
+pnpm install
+pnpm build
+pnpm demo
 ```
 
 ターミナルに表示された `http://127.0.0.1:<port>/` をブラウザーで開きます。終了はターミナルで `Ctrl-C` です。AIに頼むときは、次の文を使えます。
@@ -51,6 +51,19 @@ npm run demo
 > `QUICKSTART.md`を読んでサンプルデータのプレビューを起動し、URLを教えてください。AWS/Googleへのサインインやデータ書き込みは行わないでください。
 
 AIにプレビューを起動してもらう場合の手順は[QUICKSTART.md](QUICKSTART.md)を参照してください。アプリ利用ガイドは[日本語版](app/README.ja.md)と[English](app/README.md)を用意しています。
+
+## 開発時のチェック
+
+JavaScriptはOxlint、CSSはStylelint、Markdownはmarkdownlint-cli2で検査し、OxfmtでJavaScript・CSS・HTML・JSON・Markdownを整形します。RustはrustfmtとClippyを使います。変更ファイルに応じてLefthookがコミット前にチェックし、Push前にテストを実行します。
+
+```sh
+pnpm lint
+pnpm format
+pnpm test
+pnpm check
+```
+
+Node.jsのパッケージ管理にはpnpmを使います。`pnpm install`で開発ツールとGit hooksを準備してください。
 
 ## 画面イメージ
 

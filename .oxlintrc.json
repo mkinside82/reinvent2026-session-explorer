@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint"],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "globals": {
+    "REINVENT_RUNTIME": "readonly"
+  },
+  "rules": {
+    "eslint/no-unused-vars": "error",
+    "eslint/no-empty": ["error", { "allowEmptyCatch": true }],
+    "eslint/no-dupe-keys": "error",
+    "eslint/no-undef": "error"
+  }
+}

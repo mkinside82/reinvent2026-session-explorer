@@ -1,0 +1,24 @@
+pre-commit:
+  commands:
+    oxfmt:
+      glob: '*.{js,mjs,json,css,html,md}'
+      run: pnpm exec oxfmt --check {staged_files}
+    oxlint:
+      glob: '*.{js,mjs}'
+      run: pnpm exec oxlint {staged_files}
+    stylelint:
+      glob: '*.css'
+      run: pnpm exec stylelint {staged_files}
+    markdownlint:
+      glob: '*.md'
+      run: pnpm exec markdownlint-cli2 {staged_files}
+    rustfmt:
+      glob: '*.rs'
+      run: cargo fmt --manifest-path app/server/Cargo.toml -- --check
+    clippy:
+      glob: '*.rs'
+      run: cargo clippy --manifest-path app/server/Cargo.toml --all-targets -- -D warnings
+pre-push:
+  commands:
+    test:
+      run: pnpm test

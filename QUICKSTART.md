@@ -4,15 +4,15 @@
 
 ## サンプルデータのプレビューを起動
 
-必要なものはNode.jsだけです。プレビューは架空セッションを使う静的画面で、AWSやGoogleへの認証・API書き込みを使いません。
+Node.jsとpnpmが必要です。プレビューは架空セッションを使う静的画面で、AWSやGoogleへの認証・API書き込みを使いません。
 
 ```sh
-cd app
-npm run build
-npm run demo
+pnpm install
+pnpm build
+pnpm demo
 ```
 
-`npm run demo` は `127.0.0.1` の空きポートを自動選択し、ターミナルにURLを表示します。プロセスを止めるときは `Ctrl-C` を押します。
+`pnpm demo` は `127.0.0.1` の空きポートを自動選択し、ターミナルにURLを表示します。プロセスを止めるときは `Ctrl-C` を押します。
 
 ## AIへの依頼例
 

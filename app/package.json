@@ -1,1 +1,10 @@
-{"name":"reinvent-session-explorer","private":true,"type":"module","scripts":{"build":"node build.mjs","demo":"node demo-preview.mjs","test":"node --test tests/*.test.mjs"}}
+{
+  "name": "reinvent-session-explorer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "demo": "node demo-preview.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

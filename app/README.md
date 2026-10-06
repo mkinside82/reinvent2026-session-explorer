@@ -8,11 +8,12 @@ This guide covers the application itself. For the project overview and quick pre
 
 ### Preview (sample data)
 
-Node.js is required. From this directory, build and serve the fictional sample catalog:
+Node.js and pnpm are required. From the repository root, install tools and start the fictional sample catalog:
 
 ```sh
-npm run build
-npm run demo
+pnpm install
+pnpm build
+pnpm demo
 ```
 
 Open the loopback URL printed in the terminal and stop the server with `Ctrl-C`. Preview does not sign in or call AWS or Google APIs.
@@ -86,8 +87,8 @@ The app requests the `calendar.app.created` scope and manages events in a dedica
 ## Build and tests
 
 ```sh
-npm run build
-npm test
+pnpm --dir app run build
+pnpm test
 ```
 
 The frontend uses Node.js built-ins. The AWS-connected companion is in `server/` and requires Rust/Cargo. Automated tests and fixture results do not replace verification with the attendee's AWS or Google account.

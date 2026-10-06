@@ -1,0 +1,28 @@
+{
+  "name": "reinvent2026-session-explorer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --dir app run build",
+    "demo": "pnpm --dir app run demo",
+    "test": "pnpm --dir app test",
+    "lint": "pnpm lint:js && pnpm lint:css && pnpm lint:markdown && pnpm lint:rust",
+    "lint:js": "oxlint app",
+    "lint:css": "stylelint app/styles.css",
+    "lint:markdown": "markdownlint-cli2 \"*.md\" \"app/**/*.md\"",
+    "lint:rust": "cargo clippy --manifest-path app/server/Cargo.toml --all-targets -- -D warnings",
+    "format": "oxfmt \"*.md\" \"app/**/*.{js,mjs,json,css,html,md}\" && cargo fmt --manifest-path app/server/Cargo.toml",
+    "format:check": "oxfmt --check \"*.md\" \"app/**/*.{js,mjs,json,css,html,md}\" && cargo fmt --manifest-path app/server/Cargo.toml -- --check",
+    "check": "pnpm lint && pnpm format:check && pnpm test && pnpm build",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "lefthook": "2.1.17",
+    "markdownlint-cli2": "0.23.3",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "stylelint": "17.16.0",
+    "stylelint-config-recommended": "18.0.0"
+  },
+  "packageManager": "pnpm@11.19.0"
+}

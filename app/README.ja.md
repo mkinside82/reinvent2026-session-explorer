@@ -8,11 +8,12 @@
 
 ### プレビュー（サンプルデータ）
 
-Node.jsが必要です。このディレクトリで架空のサンプルカタログをビルドして起動します。
+Node.jsとpnpmが必要です。リポジトリのルートでツールをインストールし、架空のサンプルカタログをビルドして起動します。
 
 ```sh
-npm run build
-npm run demo
+pnpm install
+pnpm build
+pnpm demo
 ```
 
 ターミナルに表示されたlocalhostのURLを開きます。終了するときは`Ctrl-C`を押してください。プレビューではサインインせず、AWSやGoogleのAPIも呼び出しません。
@@ -86,8 +87,8 @@ Google Calendar同期はAWS予約とは別機能です。利用者が設定す�
 ## ビルドとテスト
 
 ```sh
-npm run build
-npm test
+pnpm --dir app run build
+pnpm test
 ```
 
 フロントエンドはNode.js組み込み機能で動作します。AWS接続用サーバーは`server/`にあり、Rust/Cargoが必要です。自動テストやfixtureの結果は、利用者本人のAWS/Googleアカウントを使った実環境確認の代わりにはなりません。

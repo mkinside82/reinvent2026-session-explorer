@@ -296,11 +296,13 @@ fn google_keychain_entry(account: &str) -> Result<Entry, &'static str> {
 }
 
 async fn google_keychain_read(account: &'static str) -> Result<Option<String>, &'static str> {
-    tokio::task::spawn_blocking(move || match google_keychain_entry(account)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => Err("KEYCHAIN_UNAVAILABLE"),
-    })
+    tokio::task::spawn_blocking(
+        move || match google_keychain_entry(account)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err("KEYCHAIN_UNAVAILABLE"),
+        },
+    )
     .await
     .map_err(|_| "KEYCHAIN_UNAVAILABLE")?
 }
@@ -333,7 +335,9 @@ async fn google_client_id() -> Result<Option<String>, &'static str> {
 }
 
 async fn google_event_map() -> Result<HashMap<String, String>, &'static str> {
-    let Some(raw) = google_keychain_read(GOOGLE_EVENT_MAP_ACCOUNT).await? else { return Ok(HashMap::new()); };
+    let Some(raw) = google_keychain_read(GOOGLE_EVENT_MAP_ACCOUNT).await? else {
+        return Ok(HashMap::new());
+    };
     serde_json::from_str(&raw).map_err(|_| "GOOGLE_EVENT_MAP_INVALID")
 }
 
@@ -345,7 +349,9 @@ async fn save_google_event_map(map: &HashMap<String, String>) -> Result<(), &'st
 fn valid_google_client_id(value: &str) -> bool {
     value.ends_with(".apps.googleusercontent.com")
         && value.len() > ".apps.googleusercontent.com".len()
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn subject_from_id_token(token: &str) -> Result<String, &'static str> {
@@ -680,10 +686,10 @@ async fn start_news_refresh(state: AppState) {
         // date formats, so one busy blog cannot crowd out every other AWS topic.
         for index in 0..30 {
             for feed in &mut feeds {
-                if let Some(items_for_feed) = feed.as_mut() {
-                    if index < items_for_feed.len() {
-                        items.push(items_for_feed[index].clone());
-                    }
+                if let Some(items_for_feed) = feed.as_mut()
+                    && index < items_for_feed.len()
+                {
+                    items.push(items_for_feed[index].clone());
                 }
             }
         }
@@ -959,9 +965,10 @@ async fn auth_start(State(state): State<AppState>) -> Response {
 }
 
 async fn callback(State(state): State<AppState>, RawQuery(raw): RawQuery) -> Response {
-    let query: HashMap<String, String> = form_urlencoded::parse(raw.as_deref().unwrap_or_default().as_bytes())
-        .into_owned()
-        .collect();
+    let query: HashMap<String, String> =
+        form_urlencoded::parse(raw.as_deref().unwrap_or_default().as_bytes())
+            .into_owned()
+            .collect();
     let code = query.get("code").filter(|value| !value.is_empty());
     let received_state = query.get("state").filter(|value| !value.is_empty());
     let Some(code) = code else {
@@ -972,7 +979,7 @@ async fn callback(State(state): State<AppState>, RawQuery(raw): RawQuery) -> Res
     };
     let state_result = {
         let mut guard = state.0.pending_login.lock().await;
-        consume_login_state(&mut *guard, received_state)
+        consume_login_state(&mut guard, received_state)
     };
     let pending = match state_result {
         Ok(value) => value,
@@ -1148,123 +1155,361 @@ async fn live_schedule(State(state): State<AppState>) -> Response {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReserveSessionsRequest { session_ids: Vec<String> }
+struct ReserveSessionsRequest {
+    session_ids: Vec<String>,
+}
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct PersonalTimeRequest {
     action: String,
-    #[serde(default)] personal_time_id: String,
-    #[serde(default)] title: String,
-    #[serde(default)] description: String,
-    #[serde(default)] start_date_time: String,
-    #[serde(default)] end_date_time: String,
-    #[serde(default)] location: String,
+    #[serde(default)]
+    personal_time_id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    start_date_time: String,
+    #[serde(default)]
+    end_date_time: String,
+    #[serde(default)]
+    location: String,
 }
 
 fn valid_utc_datetime(value: &str) -> Option<i64> {
-    if value.len() != 19 || value.as_bytes().get(4) != Some(&b'-') || value.as_bytes().get(7) != Some(&b'-') || value.as_bytes().get(10) != Some(&b'T') || value.as_bytes().get(13) != Some(&b':') || value.as_bytes().get(16) != Some(&b':') { return None; }
-    let number = |a: usize,b: usize| value.get(a..b)?.parse::<i64>().ok();
-    let (year,month,day,hour,minute,second)=(number(0,4)?,number(5,7)?,number(8,10)?,number(11,13)?,number(14,16)?,number(17,19)?);
-    if !value.bytes().enumerate().all(|(i,b)| [4,7,10,13,16].contains(&i) || b.is_ascii_digit()) || year < 2000 || !(1..=12).contains(&month) || !(0..=23).contains(&hour) || !(0..=59).contains(&minute) || second != 0 { return None; }
-    let leap=year%4==0&&(year%100!=0||year%400==0);
-    let days=[31,if leap{29}else{28},31,30,31,30,31,31,30,31,30,31];
-    if day<1||day>days[(month-1) as usize] { return None; }
-    let mut days_before=(year-1970)*365+(year-1969)/4-(year-1901)/100+(year-1601)/400;
-    for m in 1..month { days_before+=days[(m-1) as usize]; }
-    Some((((days_before+day-1)*24+hour)*60)+minute)
+    if value.len() != 19
+        || value.as_bytes().get(4) != Some(&b'-')
+        || value.as_bytes().get(7) != Some(&b'-')
+        || value.as_bytes().get(10) != Some(&b'T')
+        || value.as_bytes().get(13) != Some(&b':')
+        || value.as_bytes().get(16) != Some(&b':')
+    {
+        return None;
+    }
+    let number = |a: usize, b: usize| value.get(a..b)?.parse::<i64>().ok();
+    let (year, month, day, hour, minute, second) = (
+        number(0, 4)?,
+        number(5, 7)?,
+        number(8, 10)?,
+        number(11, 13)?,
+        number(14, 16)?,
+        number(17, 19)?,
+    );
+    if !value
+        .bytes()
+        .enumerate()
+        .all(|(i, b)| [4, 7, 10, 13, 16].contains(&i) || b.is_ascii_digit())
+        || year < 2000
+        || !(1..=12).contains(&month)
+        || !(0..=23).contains(&hour)
+        || !(0..=59).contains(&minute)
+        || second != 0
+    {
+        return None;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if day < 1 || day > days[(month - 1) as usize] {
+        return None;
+    }
+    let mut days_before =
+        (year - 1970) * 365 + (year - 1969) / 4 - (year - 1901) / 100 + (year - 1601) / 400;
+    for m in 1..month {
+        days_before += days[(m - 1) as usize];
+    }
+    Some((((days_before + day - 1) * 24 + hour) * 60) + minute)
 }
 
 fn personal_time_matches(row: &Value, input: &PersonalTimeRequest) -> bool {
-    row.get("title").and_then(Value::as_str)==Some(input.title.trim()) && row.get("description").and_then(Value::as_str)==Some(input.description.trim()) && row.get("startDateTime").and_then(Value::as_str)==Some(input.start_date_time.as_str()) && row.get("endDateTime").and_then(Value::as_str)==Some(input.end_date_time.as_str()) && row.get("location").and_then(Value::as_str).unwrap_or("")==input.location.trim()
+    row.get("title").and_then(Value::as_str) == Some(input.title.trim())
+        && row.get("description").and_then(Value::as_str) == Some(input.description.trim())
+        && row.get("startDateTime").and_then(Value::as_str) == Some(input.start_date_time.as_str())
+        && row.get("endDateTime").and_then(Value::as_str) == Some(input.end_date_time.as_str())
+        && row.get("location").and_then(Value::as_str).unwrap_or("") == input.location.trim()
 }
 
-async fn aws_personal_time_write(state: &AppState, method: Method, url: &str, body: Option<Value>) -> Result<reqwest::Response, &'static str> {
-    let mut refreshed=false;
+async fn aws_personal_time_write(
+    state: &AppState,
+    method: Method,
+    url: &str,
+    body: Option<Value>,
+) -> Result<reqwest::Response, &'static str> {
+    let mut refreshed = false;
     loop {
-        let access=load_access_token(state,refreshed).await?;
-        let builder=match method { Method::POST=>state.0.client.post(url),Method::PUT=>state.0.client.put(url),Method::DELETE=>state.0.client.delete(url),_=>return Err("REQUEST_METHOD_INVALID") };
-        let builder=builder.bearer_auth(access);
-        let result=if let Some(body)=&body { builder.json(body).send().await } else { builder.send().await };
+        let access = load_access_token(state, refreshed).await?;
+        let builder = match method {
+            Method::POST => state.0.client.post(url),
+            Method::PUT => state.0.client.put(url),
+            Method::DELETE => state.0.client.delete(url),
+            _ => return Err("REQUEST_METHOD_INVALID"),
+        };
+        let builder = builder.bearer_auth(access);
+        let result = if let Some(body) = &body {
+            builder.json(body).send().await
+        } else {
+            builder.send().await
+        };
         match result {
-            Ok(response) if response.status()==ReqwestStatus::UNAUTHORIZED&&!refreshed=>{refreshed=true;continue;}
-            Ok(response)=>return Ok(response),
-            Err(_)=>return Err("NETWORK_ERROR"),
+            Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => {
+                refreshed = true;
+                continue;
+            }
+            Ok(response) => return Ok(response),
+            Err(_) => return Err("NETWORK_ERROR"),
         }
     }
 }
 
-async fn live_personal_time(State(state): State<AppState>, Json(input): Json<PersonalTimeRequest>) -> Response {
-    let account_id={state.0.auth.lock().await.account_id.clone()};
-    if account_id.is_none(){return response_error(StatusCode::UNAUTHORIZED,"SIGN_IN_REQUIRED");}
-    if !["create","update","delete"].contains(&input.action.as_str()){return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_ACTION_INVALID");}
-    let id_valid=!input.personal_time_id.is_empty()&&input.personal_time_id.len()<=128&&input.personal_time_id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_');
-    if input.action!="create"&&!id_valid{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_ID_INVALID");}
-    let title=input.title.trim();let description=input.description.trim();let location=input.location.trim();
-    if input.action!="delete" {
-        if title.is_empty()||title.chars().count()>128||description.is_empty()||description.chars().count()>250||location.chars().count()>255{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_FIELDS_INVALID");}
-        let start=valid_utc_datetime(&input.start_date_time);let end=valid_utc_datetime(&input.end_date_time);
-        let (Some(start),Some(end))=(start,end) else{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_DATETIME_INVALID");};
-        if end<=start||(end-start)%5!=0{return response_error(StatusCode::BAD_REQUEST,"PERSONAL_TIME_INTERVAL_INVALID");}
+async fn live_personal_time(
+    State(state): State<AppState>,
+    Json(input): Json<PersonalTimeRequest>,
+) -> Response {
+    let account_id = { state.0.auth.lock().await.account_id.clone() };
+    if account_id.is_none() {
+        return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED");
     }
-    let schedule_url=format!("{API_ROOT}/events/{EVENT_ID}/schedule");
-    let before_response=match api_get(&state,&schedule_url).await{Ok(value) if value.status().is_success()=>value,Ok(_)=>return response_error(StatusCode::BAD_GATEWAY,"SCHEDULE_READ_FAILED"),Err(_)=>return response_error(StatusCode::BAD_GATEWAY,"SCHEDULE_READ_FAILED")};
-    let before=match before_response.json::<Value>().await{Ok(value)=>value,Err(_)=>return response_error(StatusCode::BAD_GATEWAY,"AWS_RESPONSE_INVALID")};
-    let Some(before_rows)=before.pointer("/schedule/personalTime").and_then(Value::as_array).cloned() else{return response_error(StatusCode::BAD_GATEWAY,"AWS_RESPONSE_INVALID");};
-    if input.action!="create"&&!before_rows.iter().any(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str())){
-        return if input.action=="delete"{Json(json!({"confirmed":true,"alreadyDeleted":true})).into_response()}else{response_error(StatusCode::NOT_FOUND,"PERSONAL_TIME_NOT_FOUND")};
+    if !["create", "update", "delete"].contains(&input.action.as_str()) {
+        return response_error(StatusCode::BAD_REQUEST, "PERSONAL_TIME_ACTION_INVALID");
     }
-    let base=format!("{API_ROOT}/events/{EVENT_ID}/personal-time");
-    let (method,url,body)=match input.action.as_str(){
-        "create"=>(Method::POST,base.clone(),Some(json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}))),
-        "update"=>(Method::PUT,format!("{base}/{}",input.personal_time_id),Some(json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}))),
-        _=>(Method::DELETE,format!("{base}/{}",input.personal_time_id),None),
+    let id_valid = !input.personal_time_id.is_empty()
+        && input.personal_time_id.len() <= 128
+        && input
+            .personal_time_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if input.action != "create" && !id_valid {
+        return response_error(StatusCode::BAD_REQUEST, "PERSONAL_TIME_ID_INVALID");
+    }
+    let title = input.title.trim();
+    let description = input.description.trim();
+    let location = input.location.trim();
+    if input.action != "delete" {
+        if title.is_empty()
+            || title.chars().count() > 128
+            || description.is_empty()
+            || description.chars().count() > 250
+            || location.chars().count() > 255
+        {
+            return response_error(StatusCode::BAD_REQUEST, "PERSONAL_TIME_FIELDS_INVALID");
+        }
+        let start = valid_utc_datetime(&input.start_date_time);
+        let end = valid_utc_datetime(&input.end_date_time);
+        let (Some(start), Some(end)) = (start, end) else {
+            return response_error(StatusCode::BAD_REQUEST, "PERSONAL_TIME_DATETIME_INVALID");
+        };
+        if end <= start || (end - start) % 5 != 0 {
+            return response_error(StatusCode::BAD_REQUEST, "PERSONAL_TIME_INTERVAL_INVALID");
+        }
+    }
+    let schedule_url = format!("{API_ROOT}/events/{EVENT_ID}/schedule");
+    let before_response = match api_get(&state, &schedule_url).await {
+        Ok(value) if value.status().is_success() => value,
+        Ok(_) => return response_error(StatusCode::BAD_GATEWAY, "SCHEDULE_READ_FAILED"),
+        Err(_) => return response_error(StatusCode::BAD_GATEWAY, "SCHEDULE_READ_FAILED"),
     };
-    let write_result=aws_personal_time_write(&state,method,&url,body).await;
-    if let Ok(response)=&write_result {
-        if response.status().is_server_error() { /* Reconcile from GetSchedule before reporting an ambiguous write. */ }
-        else {
-        if !response.status().is_success()&&!(input.action=="delete"&&response.status()==ReqwestStatus::NOT_FOUND){
-            let status=response.status();let (http,code)=match status.as_u16(){401=>(StatusCode::UNAUTHORIZED,"SIGN_IN_REQUIRED"),403=>(StatusCode::FORBIDDEN,"EVENT_REGISTRATION_REQUIRED"),404=>(StatusCode::NOT_FOUND,"PERSONAL_TIME_NOT_FOUND"),409=>(StatusCode::CONFLICT,"AWS_OPERATION_CLOSED"),429=>(StatusCode::TOO_MANY_REQUESTS,"RATE_LIMITED"),400=>(StatusCode::BAD_REQUEST,"PERSONAL_TIME_REJECTED"),_=>(StatusCode::BAD_GATEWAY,"PERSONAL_TIME_WRITE_FAILED")};return response_error(http,code);
-        }
+    let before = match before_response.json::<Value>().await {
+        Ok(value) => value,
+        Err(_) => return response_error(StatusCode::BAD_GATEWAY, "AWS_RESPONSE_INVALID"),
+    };
+    let Some(before_rows) = before
+        .pointer("/schedule/personalTime")
+        .and_then(Value::as_array)
+        .cloned()
+    else {
+        return response_error(StatusCode::BAD_GATEWAY, "AWS_RESPONSE_INVALID");
+    };
+    if input.action != "create"
+        && !before_rows.iter().any(|row| {
+            row.get("personalTimeId").and_then(Value::as_str)
+                == Some(input.personal_time_id.as_str())
+        })
+    {
+        return if input.action == "delete" {
+            Json(json!({"confirmed":true,"alreadyDeleted":true})).into_response()
+        } else {
+            response_error(StatusCode::NOT_FOUND, "PERSONAL_TIME_NOT_FOUND")
+        };
+    }
+    let base = format!("{API_ROOT}/events/{EVENT_ID}/personal-time");
+    let (method, url, body) = match input.action.as_str() {
+        "create" => (
+            Method::POST,
+            base.clone(),
+            Some(
+                json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}),
+            ),
+        ),
+        "update" => (
+            Method::PUT,
+            format!("{base}/{}", input.personal_time_id),
+            Some(
+                json!({"title":title,"description":description,"startDateTime":&input.start_date_time,"endDateTime":&input.end_date_time,"location":location}),
+            ),
+        ),
+        _ => (
+            Method::DELETE,
+            format!("{base}/{}", input.personal_time_id),
+            None,
+        ),
+    };
+    let write_result = aws_personal_time_write(&state, method, &url, body).await;
+    if let Ok(response) = &write_result {
+        if response.status().is_server_error() { /* Reconcile from GetSchedule before reporting an ambiguous write. */
+        } else {
+            if !response.status().is_success()
+                && !(input.action == "delete" && response.status() == ReqwestStatus::NOT_FOUND)
+            {
+                let status = response.status();
+                let (http, code) = match status.as_u16() {
+                    401 => (StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
+                    403 => (StatusCode::FORBIDDEN, "EVENT_REGISTRATION_REQUIRED"),
+                    404 => (StatusCode::NOT_FOUND, "PERSONAL_TIME_NOT_FOUND"),
+                    409 => (StatusCode::CONFLICT, "AWS_OPERATION_CLOSED"),
+                    429 => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
+                    400 => (StatusCode::BAD_REQUEST, "PERSONAL_TIME_REJECTED"),
+                    _ => (StatusCode::BAD_GATEWAY, "PERSONAL_TIME_WRITE_FAILED"),
+                };
+                return response_error(http, code);
+            }
         }
     }
-    let after_response=match api_get(&state,&schedule_url).await{Ok(value) if value.status().is_success()=>value,_=>return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response()};
-    let after=match after_response.json::<Value>().await{Ok(value)=>value,Err(_)=>return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response()};
-    let Some(after_rows)=after.pointer("/schedule/personalTime").and_then(Value::as_array).cloned() else{return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response();};
-    let result=match input.action.as_str(){
-        "create"=>{let prior=before_rows.iter().filter(|row|personal_time_matches(row,&input)).count();let matches:Vec<&Value>=after_rows.iter().filter(|row|personal_time_matches(row,&input)).collect();if matches.len()>prior&&matches.len()==prior+1{json!({"confirmed":true,"action":"created","personalTime":matches.last().copied()})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
-        "update"=>{let found=after_rows.iter().find(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str()));if found.is_some_and(|row|personal_time_matches(row,&input)){json!({"confirmed":true,"action":"updated","personalTime":found})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
-        _=>{if !after_rows.iter().any(|row|row.get("personalTimeId").and_then(Value::as_str)==Some(input.personal_time_id.as_str())){json!({"confirmed":true,"action":"deleted"})}else{json!({"confirmed":false,"outcomeUnknown":true})}},
+    let after_response = match api_get(&state, &schedule_url).await {
+        Ok(value) if value.status().is_success() => value,
+        _ => return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response(),
+    };
+    let after = match after_response.json::<Value>().await {
+        Ok(value) => value,
+        Err(_) => return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response(),
+    };
+    let Some(after_rows) = after
+        .pointer("/schedule/personalTime")
+        .and_then(Value::as_array)
+        .cloned()
+    else {
+        return Json(json!({"confirmed":false,"outcomeUnknown":true})).into_response();
+    };
+    let result = match input.action.as_str() {
+        "create" => {
+            let prior = before_rows
+                .iter()
+                .filter(|row| personal_time_matches(row, &input))
+                .count();
+            let matches: Vec<&Value> = after_rows
+                .iter()
+                .filter(|row| personal_time_matches(row, &input))
+                .collect();
+            if matches.len() > prior && matches.len() == prior + 1 {
+                json!({"confirmed":true,"action":"created","personalTime":matches.last().copied()})
+            } else {
+                json!({"confirmed":false,"outcomeUnknown":true})
+            }
+        }
+        "update" => {
+            let found = after_rows.iter().find(|row| {
+                row.get("personalTimeId").and_then(Value::as_str)
+                    == Some(input.personal_time_id.as_str())
+            });
+            if found.is_some_and(|row| personal_time_matches(row, &input)) {
+                json!({"confirmed":true,"action":"updated","personalTime":found})
+            } else {
+                json!({"confirmed":false,"outcomeUnknown":true})
+            }
+        }
+        _ => {
+            if !after_rows.iter().any(|row| {
+                row.get("personalTimeId").and_then(Value::as_str)
+                    == Some(input.personal_time_id.as_str())
+            }) {
+                json!({"confirmed":true,"action":"deleted"})
+            } else {
+                json!({"confirmed":false,"outcomeUnknown":true})
+            }
+        }
     };
     Json(result).into_response()
 }
 
 async fn aws_reserved_ids(state: &AppState) -> Result<HashSet<String>, &'static str> {
     let url = format!("{API_ROOT}/events/{EVENT_ID}/schedule");
-    let response = api_get(state, &url).await.map_err(|_| "SCHEDULE_READ_FAILED")?;
-    if !response.status().is_success() { return Err("SCHEDULE_READ_FAILED"); }
-    let value = response.json::<Value>().await.map_err(|_| "AWS_RESPONSE_INVALID")?;
-    let ids = value.pointer("/schedule/reserved").and_then(Value::as_array).ok_or("AWS_RESPONSE_INVALID")?;
-    ids.iter().map(|id| id.as_str().filter(|id| !id.is_empty()).map(str::to_owned).ok_or("AWS_RESPONSE_INVALID")).collect()
+    let response = api_get(state, &url)
+        .await
+        .map_err(|_| "SCHEDULE_READ_FAILED")?;
+    if !response.status().is_success() {
+        return Err("SCHEDULE_READ_FAILED");
+    }
+    let value = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "AWS_RESPONSE_INVALID")?;
+    let ids = value
+        .pointer("/schedule/reserved")
+        .and_then(Value::as_array)
+        .ok_or("AWS_RESPONSE_INVALID")?;
+    ids.iter()
+        .map(|id| {
+            id.as_str()
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+                .ok_or("AWS_RESPONSE_INVALID")
+        })
+        .collect()
 }
 
-async fn live_reserve_sessions(State(state): State<AppState>, Json(input): Json<ReserveSessionsRequest>) -> Response {
+async fn live_reserve_sessions(
+    State(state): State<AppState>,
+    Json(input): Json<ReserveSessionsRequest>,
+) -> Response {
     if input.session_ids.is_empty() || input.session_ids.len() > 10 {
         return response_error(StatusCode::BAD_REQUEST, "RESERVATION_ITEM_COUNT_INVALID");
     }
     let mut seen = HashSet::new();
-    if input.session_ids.iter().any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str())) {
+    if input
+        .session_ids
+        .iter()
+        .any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str()))
+    {
         return response_error(StatusCode::BAD_REQUEST, "RESERVATION_SESSION_IDS_INVALID");
     }
     let account_id = { state.0.auth.lock().await.account_id.clone() };
-    let Some(account_id) = account_id else { return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"); };
+    let Some(account_id) = account_id else {
+        return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED");
+    };
     let catalog = catalog_for(&state, &account_id).await;
-    let available: HashMap<String, bool> = catalog.lock().await.saved.items.iter().filter_map(|item| {
-        let id = item.get("sessionId")?.as_str()?;
-        Some((id.to_owned(), item.get("isReservable").and_then(Value::as_bool).unwrap_or(false)))
-    }).collect();
-    if input.session_ids.iter().any(|id| available.get(id) != Some(&true)) {
+    let available: HashMap<String, bool> = catalog
+        .lock()
+        .await
+        .saved
+        .items
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("sessionId")?.as_str()?;
+            Some((
+                id.to_owned(),
+                item.get("isReservable")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            ))
+        })
+        .collect();
+    if input
+        .session_ids
+        .iter()
+        .any(|id| available.get(id) != Some(&true))
+    {
         return response_error(StatusCode::BAD_REQUEST, "SESSION_NOT_RESERVABLE");
     }
     let before = match aws_reserved_ids(&state).await {
@@ -1282,81 +1527,162 @@ async fn live_reserve_sessions(State(state): State<AppState>, Json(input): Json<
             Ok(value) => value,
             Err(_) => return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
         };
-        match state.0.client.post(&url).bearer_auth(access).json(&body).send().await {
-            Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => { refreshed = true; continue; }
+        match state
+            .0
+            .client
+            .post(&url)
+            .bearer_auth(access)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => {
+                refreshed = true;
+                continue;
+            }
             Ok(response) => break Some(response),
             Err(_) => break None,
         }
     };
     let (mut successful, mut failed, mut unknown, response_ambiguous) = match response {
-        None => (Vec::<String>::new(), Vec::<Value>::new(), input.session_ids.clone(), true),
+        None => (
+            Vec::<String>::new(),
+            Vec::<Value>::new(),
+            input.session_ids.clone(),
+            true,
+        ),
         Some(response) if response.status().as_u16() == 200 => {
-            let value = match response.json::<Value>().await { Ok(value) => value, Err(_) => json!({}) };
+            let value = match response.json::<Value>().await {
+                Ok(value) => value,
+                Err(_) => json!({}),
+            };
             let result = value.get("result");
-            let successes = result.and_then(|v| v.get("successful")).and_then(Value::as_array);
-            let failures = result.and_then(|v| v.get("failed")).and_then(Value::as_array);
+            let successes = result
+                .and_then(|v| v.get("successful"))
+                .and_then(Value::as_array);
+            let failures = result
+                .and_then(|v| v.get("failed"))
+                .and_then(Value::as_array);
             match (successes, failures) {
                 (Some(successes), Some(failures)) => {
-                    let submitted: HashSet<&str> = input.session_ids.iter().map(String::as_str).collect();
+                    let submitted: HashSet<&str> =
+                        input.session_ids.iter().map(String::as_str).collect();
                     let mut seen_result = HashSet::new();
                     let mut good = Vec::new();
                     let mut bad = Vec::new();
                     let mut valid = true;
                     for id in successes {
                         match id.as_str() {
-                            Some(id) if submitted.contains(id) && seen_result.insert(id.to_owned()) => good.push(id.to_owned()),
+                            Some(id)
+                                if submitted.contains(id) && seen_result.insert(id.to_owned()) =>
+                            {
+                                good.push(id.to_owned())
+                            }
                             _ => valid = false,
                         }
                     }
                     for failure in failures {
-                        let Some(id) = failure.get("sessionId").and_then(Value::as_str) else { valid = false; continue; };
-                        if !submitted.contains(id) || !seen_result.insert(id.to_owned()) || failure.get("code").and_then(Value::as_str).is_none() { valid = false; continue; }
+                        let Some(id) = failure.get("sessionId").and_then(Value::as_str) else {
+                            valid = false;
+                            continue;
+                        };
+                        if !submitted.contains(id)
+                            || !seen_result.insert(id.to_owned())
+                            || failure.get("code").and_then(Value::as_str).is_none()
+                        {
+                            valid = false;
+                            continue;
+                        }
                         bad.push(failure.clone());
                     }
-                    if !valid || seen_result.len() != submitted.len() { (Vec::new(), Vec::new(), input.session_ids.clone(), true) }
-                    else { (good, bad, Vec::new(), false) }
+                    if !valid || seen_result.len() != submitted.len() {
+                        (Vec::new(), Vec::new(), input.session_ids.clone(), true)
+                    } else {
+                        (good, bad, Vec::new(), false)
+                    }
                 }
                 _ => (Vec::new(), Vec::new(), input.session_ids.clone(), true),
             }
         }
         Some(response) => {
             let status = response.status();
-            let code = match status.as_u16() { 401 => "SIGN_IN_REQUIRED", 403 => "EVENT_REGISTRATION_REQUIRED", 409 => "RESERVATIONS_CLOSED_OR_CONFLICT", 429 => "RATE_LIMITED", 400 => "RESERVATION_REQUEST_REJECTED", _ if status.is_server_error() => "RESERVATION_OUTCOME_UNKNOWN", _ => "RESERVATION_REQUEST_FAILED" };
-            if status.is_server_error() { (Vec::new(), Vec::new(), input.session_ids.clone(), true) }
-            else { return response_error(match status.as_u16() { 401 => StatusCode::UNAUTHORIZED, 403 => StatusCode::FORBIDDEN, 409 => StatusCode::CONFLICT, 429 => StatusCode::TOO_MANY_REQUESTS, _ => StatusCode::BAD_GATEWAY }, code); }
+            let code = match status.as_u16() {
+                401 => "SIGN_IN_REQUIRED",
+                403 => "EVENT_REGISTRATION_REQUIRED",
+                409 => "RESERVATIONS_CLOSED_OR_CONFLICT",
+                429 => "RATE_LIMITED",
+                400 => "RESERVATION_REQUEST_REJECTED",
+                _ if status.is_server_error() => "RESERVATION_OUTCOME_UNKNOWN",
+                _ => "RESERVATION_REQUEST_FAILED",
+            };
+            if status.is_server_error() {
+                (Vec::new(), Vec::new(), input.session_ids.clone(), true)
+            } else {
+                return response_error(
+                    match status.as_u16() {
+                        401 => StatusCode::UNAUTHORIZED,
+                        403 => StatusCode::FORBIDDEN,
+                        409 => StatusCode::CONFLICT,
+                        429 => StatusCode::TOO_MANY_REQUESTS,
+                        _ => StatusCode::BAD_GATEWAY,
+                    },
+                    code,
+                );
+            }
         }
     };
     let mut schedule_confirmed = false;
     let current = match aws_reserved_ids(&state).await {
-        Ok(ids) => { schedule_confirmed = true; ids },
+        Ok(ids) => {
+            schedule_confirmed = true;
+            ids
+        }
         Err(_) => HashSet::new(),
     };
     if schedule_confirmed {
         for id in &input.session_ids {
             if current.contains(id) {
-                if !successful.contains(id) { successful.push(id.clone()); }
+                if !successful.contains(id) {
+                    successful.push(id.clone());
+                }
                 failed.retain(|f| f.get("sessionId").and_then(Value::as_str) != Some(id));
                 unknown.retain(|v| v != id);
             } else if successful.contains(id) {
                 successful.retain(|value| value != id);
-                if !unknown.contains(id) { unknown.push(id.clone()); }
+                if !unknown.contains(id) {
+                    unknown.push(id.clone());
+                }
             }
         }
         if response_ambiguous {
             for id in &input.session_ids {
-                if !current.contains(id) && !unknown.contains(id) && !failed.iter().any(|f| f.get("sessionId").and_then(Value::as_str) == Some(id)) { unknown.push(id.clone()); }
+                if !current.contains(id)
+                    && !unknown.contains(id)
+                    && !failed
+                        .iter()
+                        .any(|f| f.get("sessionId").and_then(Value::as_str) == Some(id))
+                {
+                    unknown.push(id.clone());
+                }
             }
         }
     }
     Json(json!({"successful":successful,"failed":failed,"unknown":unknown,"scheduleConfirmed":schedule_confirmed})).into_response()
 }
 
-async fn live_cancel_reservations(State(state): State<AppState>, Json(input): Json<ReserveSessionsRequest>) -> Response {
+async fn live_cancel_reservations(
+    State(state): State<AppState>,
+    Json(input): Json<ReserveSessionsRequest>,
+) -> Response {
     if input.session_ids.is_empty() || input.session_ids.len() > 10 {
         return response_error(StatusCode::BAD_REQUEST, "RESERVATION_ITEM_COUNT_INVALID");
     }
     let mut seen = HashSet::new();
-    if input.session_ids.iter().any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str())) {
+    if input
+        .session_ids
+        .iter()
+        .any(|id| id.trim().is_empty() || id.len() > 256 || !seen.insert(id.as_str()))
+    {
         return response_error(StatusCode::BAD_REQUEST, "RESERVATION_SESSION_IDS_INVALID");
     }
     if state.0.auth.lock().await.account_id.is_none() {
@@ -1384,18 +1710,26 @@ async fn live_cancel_reservations(State(state): State<AppState>, Json(input): Js
                 Err(_) => return response_error(StatusCode::UNAUTHORIZED, "SIGN_IN_REQUIRED"),
             };
             match state.0.client.delete(&url).bearer_auth(access).send().await {
-                Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => { refreshed = true; continue; }
+                Ok(response) if response.status() == ReqwestStatus::UNAUTHORIZED && !refreshed => {
+                    refreshed = true;
+                    continue;
+                }
                 Ok(response) => break Some(response),
                 Err(_) => break None,
             }
         };
         match response {
             None => unknown.push(id.clone()),
-            Some(response) if response.status().is_success() || response.status().as_u16() == 404 => { succeeded.insert(id.clone()); },
+            Some(response)
+                if response.status().is_success() || response.status().as_u16() == 404 =>
+            {
+                succeeded.insert(id.clone());
+            }
             Some(response) => {
                 let status = response.status();
-                if status.is_server_error() { unknown.push(id.clone()); }
-                else {
+                if status.is_server_error() {
+                    unknown.push(id.clone());
+                } else {
                     let code = match status.as_u16() {
                         401 => "SIGN_IN_REQUIRED",
                         403 => "EVENT_REGISTRATION_REQUIRED",
@@ -1410,23 +1744,33 @@ async fn live_cancel_reservations(State(state): State<AppState>, Json(input): Js
     }
     let mut schedule_confirmed = false;
     let current = match aws_reserved_ids(&state).await {
-        Ok(ids) => { schedule_confirmed = true; ids },
+        Ok(ids) => {
+            schedule_confirmed = true;
+            ids
+        }
         Err(_) => HashSet::new(),
     };
     if schedule_confirmed {
         for id in &input.session_ids {
             if !current.contains(id) {
-                if !cancelled.contains(id) { cancelled.push(id.clone()); }
-                failed.retain(|failure| failure.get("sessionId").and_then(Value::as_str) != Some(id));
+                if !cancelled.contains(id) {
+                    cancelled.push(id.clone());
+                }
+                failed
+                    .retain(|failure| failure.get("sessionId").and_then(Value::as_str) != Some(id));
                 unknown.retain(|value| value != id);
             } else if succeeded.contains(id) {
                 cancelled.retain(|value| value != id);
-                if !unknown.contains(id) { unknown.push(id.clone()); }
+                if !unknown.contains(id) {
+                    unknown.push(id.clone());
+                }
             }
         }
     } else {
         for id in succeeded {
-            if !unknown.contains(&id) && !cancelled.contains(&id) { unknown.push(id); }
+            if !unknown.contains(&id) && !cancelled.contains(&id) {
+                unknown.push(id);
+            }
         }
     }
     let reserved: Vec<String> = current.into_iter().collect();
@@ -1435,15 +1779,21 @@ async fn live_cancel_reservations(State(state): State<AppState>, Json(input): Js
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GoogleConfigureRequest { client_id: String }
+struct GoogleConfigureRequest {
+    client_id: String,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GoogleSyncRequest { items: Vec<GoogleSyncItem> }
+struct GoogleSyncRequest {
+    items: Vec<GoogleSyncItem>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GoogleRemoveRequest { item_ids: Vec<String> }
+struct GoogleRemoveRequest {
+    item_ids: Vec<String>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1478,19 +1828,32 @@ async fn google_status(State(state): State<AppState>) -> Response {
     Json(json!({"configured":configured,"connected":connected,"calendarReady":calendar_ready,"accessTokenReady":auth.access_token.is_some(),"syncedItemIds":synced_item_ids})).into_response()
 }
 
-async fn google_configure(State(_state): State<AppState>, Json(input): Json<GoogleConfigureRequest>) -> Response {
+async fn google_configure(
+    State(_state): State<AppState>,
+    Json(input): Json<GoogleConfigureRequest>,
+) -> Response {
     let client_id = input.client_id.trim();
     if !valid_google_client_id(client_id) {
         return response_error(StatusCode::BAD_REQUEST, "GOOGLE_CLIENT_ID_INVALID");
     }
     if let Ok(Some(existing)) = google_keychain_read(GOOGLE_CLIENT_ACCOUNT).await {
-        let has_refresh = google_keychain_read(GOOGLE_REFRESH_ACCOUNT).await.ok().flatten().is_some();
-        let has_calendar_data = google_event_map().await.map(|map| !map.is_empty()).unwrap_or(true);
+        let has_refresh = google_keychain_read(GOOGLE_REFRESH_ACCOUNT)
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        let has_calendar_data = google_event_map()
+            .await
+            .map(|map| !map.is_empty())
+            .unwrap_or(true);
         if existing != client_id && (has_refresh || has_calendar_data) {
             return response_error(StatusCode::CONFLICT, "GOOGLE_DISCONNECT_BEFORE_RECONFIGURE");
         }
     }
-    if google_keychain_write(GOOGLE_CLIENT_ACCOUNT, client_id.to_owned()).await.is_err() {
+    if google_keychain_write(GOOGLE_CLIENT_ACCOUNT, client_id.to_owned())
+        .await
+        .is_err()
+    {
         return response_error(StatusCode::INTERNAL_SERVER_ERROR, "KEYCHAIN_UNAVAILABLE");
     }
     Json(json!({"configured":true})).into_response()
@@ -1499,7 +1862,9 @@ async fn google_configure(State(_state): State<AppState>, Json(input): Json<Goog
 async fn google_connect(State(state): State<AppState>) -> Response {
     let client_id = match google_client_id().await {
         Ok(Some(value)) => value,
-        Ok(None) => return response_error(StatusCode::PRECONDITION_FAILED, "GOOGLE_CLIENT_ID_REQUIRED"),
+        Ok(None) => {
+            return response_error(StatusCode::PRECONDITION_FAILED, "GOOGLE_CLIENT_ID_REQUIRED");
+        }
         Err(code) => return response_error(StatusCode::BAD_REQUEST, code),
     };
     let mut verifier_bytes = [0u8; 48];
@@ -1510,10 +1875,16 @@ async fn google_connect(State(state): State<AppState>) -> Response {
     let redirect_uri = state.0.origin.clone();
     let mut authorization = match url::Url::parse("https://accounts.google.com/o/oauth2/v2/auth") {
         Ok(value) => value,
-        Err(_) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, "GOOGLE_OAUTH_UNAVAILABLE"),
+        Err(_) => {
+            return response_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "GOOGLE_OAUTH_UNAVAILABLE",
+            );
+        }
     };
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    authorization.query_pairs_mut()
+    authorization
+        .query_pairs_mut()
         .append_pair("client_id", &client_id)
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
@@ -1531,23 +1902,35 @@ async fn google_connect(State(state): State<AppState>) -> Response {
     });
     let authorization_url = authorization.to_string();
     #[cfg(target_os = "macos")]
-    let opened = std::process::Command::new("open").arg(&authorization_url).spawn().is_ok();
+    let opened = std::process::Command::new("open")
+        .arg(&authorization_url)
+        .spawn()
+        .is_ok();
     #[cfg(not(target_os = "macos"))]
     let opened = false;
     if !opened {
         *state.0.pending_google_login.lock().await = None;
-        return response_error(StatusCode::INTERNAL_SERVER_ERROR, "GOOGLE_SYSTEM_BROWSER_UNAVAILABLE");
+        return response_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "GOOGLE_SYSTEM_BROWSER_UNAVAILABLE",
+        );
     }
     Json(json!({"opened":true})).into_response()
 }
 
-async fn root_or_google_callback(State(state): State<AppState>, RawQuery(raw): RawQuery) -> Response {
-    let query: HashMap<String, String> = form_urlencoded::parse(raw.as_deref().unwrap_or_default().as_bytes())
-        .into_owned().collect();
+async fn root_or_google_callback(
+    State(state): State<AppState>,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    let query: HashMap<String, String> =
+        form_urlencoded::parse(raw.as_deref().unwrap_or_default().as_bytes())
+            .into_owned()
+            .collect();
     if query.contains_key("code") || query.contains_key("state") || query.contains_key("error") {
         return google_callback(&state, query).await;
     }
-    let target = raw.filter(|value| !value.bytes().any(|byte| byte.is_ascii_control()))
+    let target = raw
+        .filter(|value| !value.bytes().any(|byte| byte.is_ascii_control()))
         .map(|value| format!("/index.html?{value}"))
         .unwrap_or_else(|| "/index.html".to_owned());
     Redirect::to(&target).into_response()
@@ -1555,60 +1938,131 @@ async fn root_or_google_callback(State(state): State<AppState>, RawQuery(raw): R
 
 async fn google_callback(state: &AppState, query: HashMap<String, String>) -> Response {
     if query.contains_key("error") {
-        return google_callback_page(false, "Google連携はキャンセルされました。アプリへ戻ってください。");
+        return google_callback_page(
+            false,
+            "Google連携はキャンセルされました。アプリへ戻ってください。",
+        );
     }
     let code = query.get("code").filter(|value| !value.is_empty());
     let received_state = query.get("state").filter(|value| !value.is_empty());
     let (Some(code), Some(received_state)) = (code, received_state) else {
-        return google_callback_page(false, "認証応答が不完全です。アプリへ戻って再試行してください。");
+        return google_callback_page(
+            false,
+            "認証応答が不完全です。アプリへ戻って再試行してください。",
+        );
     };
     let pending = {
         let mut guard = state.0.pending_google_login.lock().await;
-        match consume_login_state(&mut *guard, received_state) {
+        match consume_login_state(&mut guard, received_state) {
             Ok(value) => value,
-            Err(_) => return google_callback_page(false, "認証stateが一致しないか期限切れです。アプリから再試行してください。"),
+            Err(_) => {
+                return google_callback_page(
+                    false,
+                    "認証stateが一致しないか期限切れです。アプリから再試行してください。",
+                );
+            }
         }
     };
     let client_id = match google_client_id().await {
         Ok(Some(value)) => value,
         _ => return google_callback_page(false, "Google OAuth client設定を確認できませんでした。"),
     };
-    let response = state.0.client.post("https://oauth2.googleapis.com/token")
-        .form(&[("client_id", client_id.as_str()), ("code", code.as_str()),
-            ("code_verifier", pending.verifier.as_str()), ("grant_type", "authorization_code"),
-            ("redirect_uri", pending.redirect_uri.as_str())])
-        .send().await;
-    let Ok(response) = response else { return google_callback_page(false, "Google token endpointへ接続できませんでした。"); };
-    if !response.status().is_success() { return google_callback_page(false, "Google OAuthに失敗しました。Desktop clientとCalendar API設定を確認してください。"); }
-    let Ok(tokens) = response.json::<TokenResponse>().await else { return google_callback_page(false, "Googleのtoken応答を読み取れませんでした。"); };
-    if tokens.access_token.is_empty() || tokens.expires_in == 0 { return google_callback_page(false, "Google token応答が不完全です。"); }
-    let refresh_token = tokens.refresh_token.or(google_keychain_read(GOOGLE_REFRESH_ACCOUNT).await.ok().flatten());
-    let Some(refresh_token) = refresh_token else { return google_callback_page(false, "refresh tokenがありません。再連携してください。"); };
-    if google_keychain_write(GOOGLE_REFRESH_ACCOUNT, refresh_token).await.is_err() {
-        return google_callback_page(false, "Mac Keychainへ保存できませんでした。tokenは保持していません。");
+    let response = state
+        .0
+        .client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("code", code.as_str()),
+            ("code_verifier", pending.verifier.as_str()),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", pending.redirect_uri.as_str()),
+        ])
+        .send()
+        .await;
+    let Ok(response) = response else {
+        return google_callback_page(false, "Google token endpointへ接続できませんでした。");
+    };
+    if !response.status().is_success() {
+        return google_callback_page(
+            false,
+            "Google OAuthに失敗しました。Desktop clientとCalendar API設定を確認してください。",
+        );
+    }
+    let Ok(tokens) = response.json::<TokenResponse>().await else {
+        return google_callback_page(false, "Googleのtoken応答を読み取れませんでした。");
+    };
+    if tokens.access_token.is_empty() || tokens.expires_in == 0 {
+        return google_callback_page(false, "Google token応答が不完全です。");
+    }
+    let refresh_token = tokens
+        .refresh_token
+        .or(google_keychain_read(GOOGLE_REFRESH_ACCOUNT)
+            .await
+            .ok()
+            .flatten());
+    let Some(refresh_token) = refresh_token else {
+        return google_callback_page(false, "refresh tokenがありません。再連携してください。");
+    };
+    if google_keychain_write(GOOGLE_REFRESH_ACCOUNT, refresh_token)
+        .await
+        .is_err()
+    {
+        return google_callback_page(
+            false,
+            "Mac Keychainへ保存できませんでした。tokenは保持していません。",
+        );
     }
     let mut auth = state.0.google_auth.lock().await;
     auth.access_token = Some(tokens.access_token);
     auth.expires_at = Some(Instant::now() + Duration::from_secs(tokens.expires_in));
-    google_callback_page(true, "Google Calendar連携が完了しました。このタブを閉じてアプリへ戻ってください。")
+    google_callback_page(
+        true,
+        "Google Calendar連携が完了しました。このタブを閉じてアプリへ戻ってください。",
+    )
 }
 
 fn google_callback_page(ok: bool, message: &str) -> Response {
-    let heading = if ok { "連携しました" } else { "連携を完了できませんでした" };
-    let body = format!("<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>{heading}</title><body><main><h1>{heading}</h1><p>{message}</p></main></body></html>");
-    (if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST }, [(header::CONTENT_TYPE, "text/html; charset=utf-8")], body).into_response()
+    let heading = if ok {
+        "連携しました"
+    } else {
+        "連携を完了できませんでした"
+    };
+    let body = format!(
+        "<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>{heading}</title><body><main><h1>{heading}</h1><p>{message}</p></main></body></html>"
+    );
+    (
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::BAD_REQUEST
+        },
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        body,
+    )
+        .into_response()
 }
 
-fn google_api_url(calendar_id: Option<&str>, event_id: Option<&str>) -> Result<url::Url, &'static str> {
-    let mut url = url::Url::parse("https://www.googleapis.com/calendar/v3/").map_err(|_| "GOOGLE_API_UNAVAILABLE")?;
+fn google_api_url(
+    calendar_id: Option<&str>,
+    event_id: Option<&str>,
+) -> Result<url::Url, &'static str> {
+    let mut url = url::Url::parse("https://www.googleapis.com/calendar/v3/")
+        .map_err(|_| "GOOGLE_API_UNAVAILABLE")?;
     {
-        let mut path = url.path_segments_mut().map_err(|_| "GOOGLE_API_UNAVAILABLE")?;
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|_| "GOOGLE_API_UNAVAILABLE")?;
         path.pop_if_empty().push("calendars");
         if let Some(calendar_id) = calendar_id {
             path.push(calendar_id);
-            if event_id.is_some() { path.push("events"); }
+            if event_id.is_some() {
+                path.push("events");
+            }
         }
-        if let Some(event_id) = event_id { path.push(event_id); }
+        if let Some(event_id) = event_id {
+            path.push(event_id);
+        }
     }
     Ok(url)
 }
@@ -1616,18 +2070,42 @@ fn google_api_url(calendar_id: Option<&str>, event_id: Option<&str>) -> Result<u
 async fn google_access_token(state: &AppState) -> Result<String, &'static str> {
     {
         let auth = state.0.google_auth.lock().await;
-        if auth.expires_at.is_some_and(|expiry| expiry > Instant::now() + Duration::from_secs(60)) {
-            if let Some(token) = auth.access_token.as_ref() { return Ok(token.clone()); }
+        if auth
+            .expires_at
+            .is_some_and(|expiry| expiry > Instant::now() + Duration::from_secs(60))
+            && let Some(token) = auth.access_token.as_ref()
+        {
+            return Ok(token.clone());
         }
     }
-    let refresh_token = google_keychain_read(GOOGLE_REFRESH_ACCOUNT).await?.ok_or("GOOGLE_REAUTH_REQUIRED")?;
-    let client_id = google_client_id().await?.ok_or("GOOGLE_CLIENT_ID_REQUIRED")?;
-    let response = state.0.client.post("https://oauth2.googleapis.com/token")
-        .form(&[("client_id", client_id.as_str()), ("refresh_token", refresh_token.as_str()), ("grant_type", "refresh_token")])
-        .send().await.map_err(|_| "GOOGLE_NETWORK_ERROR")?;
-    if !response.status().is_success() { return Err("GOOGLE_REAUTH_REQUIRED"); }
-    let tokens = response.json::<TokenResponse>().await.map_err(|_| "GOOGLE_RESPONSE_INVALID")?;
-    if tokens.access_token.is_empty() || tokens.expires_in == 0 { return Err("GOOGLE_RESPONSE_INVALID"); }
+    let refresh_token = google_keychain_read(GOOGLE_REFRESH_ACCOUNT)
+        .await?
+        .ok_or("GOOGLE_REAUTH_REQUIRED")?;
+    let client_id = google_client_id()
+        .await?
+        .ok_or("GOOGLE_CLIENT_ID_REQUIRED")?;
+    let response = state
+        .0
+        .client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("refresh_token", refresh_token.as_str()),
+            ("grant_type", "refresh_token"),
+        ])
+        .send()
+        .await
+        .map_err(|_| "GOOGLE_NETWORK_ERROR")?;
+    if !response.status().is_success() {
+        return Err("GOOGLE_REAUTH_REQUIRED");
+    }
+    let tokens = response
+        .json::<TokenResponse>()
+        .await
+        .map_err(|_| "GOOGLE_RESPONSE_INVALID")?;
+    if tokens.access_token.is_empty() || tokens.expires_in == 0 {
+        return Err("GOOGLE_RESPONSE_INVALID");
+    }
     if let Some(rotated) = tokens.refresh_token {
         google_keychain_write(GOOGLE_REFRESH_ACCOUNT, rotated).await?;
     }
@@ -1637,62 +2115,140 @@ async fn google_access_token(state: &AppState) -> Result<String, &'static str> {
     Ok(tokens.access_token)
 }
 
-async fn create_google_calendar(state: &AppState, access_token: &str) -> Result<String, &'static str> {
+async fn create_google_calendar(
+    state: &AppState,
+    access_token: &str,
+) -> Result<String, &'static str> {
     let response = state.0.client.post("https://www.googleapis.com/calendar/v3/calendars")
         .bearer_auth(access_token).json(&json!({"summary":"AWS re:Invent 2026 · Session Explorer","timeZone":"America/Los_Angeles"}))
         .send().await.map_err(|_| "GOOGLE_NETWORK_ERROR")?;
-    if !response.status().is_success() { return Err(google_status_code(response.status())); }
-    let value = response.json::<Value>().await.map_err(|_| "GOOGLE_RESPONSE_INVALID")?;
-    let id = value.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()).ok_or("GOOGLE_RESPONSE_INVALID")?.to_owned();
+    if !response.status().is_success() {
+        return Err(google_status_code(response.status()));
+    }
+    let value = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "GOOGLE_RESPONSE_INVALID")?;
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or("GOOGLE_RESPONSE_INVALID")?
+        .to_owned();
     google_keychain_write(GOOGLE_CALENDAR_ACCOUNT, id.clone()).await?;
     Ok(id)
 }
 
 fn google_status_code(status: ReqwestStatus) -> &'static str {
-    match status.as_u16() { 401 => "GOOGLE_REAUTH_REQUIRED", 403 => "GOOGLE_PERMISSION_OR_QUOTA_ERROR", 404 => "GOOGLE_CALENDAR_NOT_FOUND", 409 => "GOOGLE_EVENT_CONFLICT", 429 => "GOOGLE_RATE_LIMITED", _ => "GOOGLE_API_ERROR" }
+    match status.as_u16() {
+        401 => "GOOGLE_REAUTH_REQUIRED",
+        403 => "GOOGLE_PERMISSION_OR_QUOTA_ERROR",
+        404 => "GOOGLE_CALENDAR_NOT_FOUND",
+        409 => "GOOGLE_EVENT_CONFLICT",
+        429 => "GOOGLE_RATE_LIMITED",
+        _ => "GOOGLE_API_ERROR",
+    }
 }
 
 fn google_event_id(item_id: &str) -> String {
-    format!("revent{}", format!("{:x}", Sha256::digest(item_id.as_bytes())))
+    format!("revent{:x}", Sha256::digest(item_id.as_bytes()))
 }
 
 fn valid_google_datetime(value: &str) -> bool {
-    if value.len() != 24 { return false; }
+    if value.len() != 24 {
+        return false;
+    }
     let bytes = value.as_bytes();
-    let prefix_ok = bytes.get(0..23).is_some_and(|prefix| prefix.iter().enumerate().all(|(i, b)| match i {
-        4 | 7 => *b == b'-', 10 => *b == b'T', 13 | 16 => *b == b':', 19 => *b == b'.', _ => b.is_ascii_digit(),
-    }));
-    let number = |start, end| value.get(start..end).and_then(|part| part.parse::<u32>().ok());
-    prefix_ok && bytes[23] == b'Z' && number(5,7).is_some_and(|month| (1..=12).contains(&month))
-        && number(8,10).is_some_and(|day| (1..=31).contains(&day))
-        && number(11,13).is_some_and(|hour| hour <= 23) && number(14,16).is_some_and(|minute| minute <= 59)
-        && number(17,19).is_some_and(|second| second <= 59)
+    let prefix_ok = bytes.get(0..23).is_some_and(|prefix| {
+        prefix.iter().enumerate().all(|(i, b)| match i {
+            4 | 7 => *b == b'-',
+            10 => *b == b'T',
+            13 | 16 => *b == b':',
+            19 => *b == b'.',
+            _ => b.is_ascii_digit(),
+        })
+    });
+    let number = |start, end| {
+        value
+            .get(start..end)
+            .and_then(|part| part.parse::<u32>().ok())
+    };
+    prefix_ok
+        && bytes[23] == b'Z'
+        && number(5, 7).is_some_and(|month| (1..=12).contains(&month))
+        && number(8, 10).is_some_and(|day| (1..=31).contains(&day))
+        && number(11, 13).is_some_and(|hour| hour <= 23)
+        && number(14, 16).is_some_and(|minute| minute <= 59)
+        && number(17, 19).is_some_and(|second| second <= 59)
 }
 
-async fn google_sync(State(state): State<AppState>, Json(input): Json<GoogleSyncRequest>) -> Response {
-    if input.items.is_empty() || input.items.len() > 50 { return response_error(StatusCode::BAD_REQUEST, "GOOGLE_SYNC_ITEM_COUNT_INVALID"); }
+async fn google_sync(
+    State(state): State<AppState>,
+    Json(input): Json<GoogleSyncRequest>,
+) -> Response {
+    if input.items.is_empty() || input.items.len() > 50 {
+        return response_error(StatusCode::BAD_REQUEST, "GOOGLE_SYNC_ITEM_COUNT_INVALID");
+    }
     let mut seen = HashSet::new();
     for item in &input.items {
-        if item.item_id.is_empty() || item.item_id.len() > 256 || !seen.insert(item.item_id.as_str()) || item.title.trim().is_empty() || item.title.len() > 512 || !valid_google_datetime(&item.start) || !valid_google_datetime(&item.end) || item.start >= item.end || item.description.as_ref().is_some_and(|v| v.len() > 12000) || item.location.as_ref().is_some_and(|v| v.len() > 1000) {
+        if item.item_id.is_empty()
+            || item.item_id.len() > 256
+            || !seen.insert(item.item_id.as_str())
+            || item.title.trim().is_empty()
+            || item.title.len() > 512
+            || !valid_google_datetime(&item.start)
+            || !valid_google_datetime(&item.end)
+            || item.start >= item.end
+            || item.description.as_ref().is_some_and(|v| v.len() > 12000)
+            || item.location.as_ref().is_some_and(|v| v.len() > 1000)
+        {
             return response_error(StatusCode::BAD_REQUEST, "GOOGLE_SYNC_ITEM_INVALID");
         }
     }
-    let access_token = match google_access_token(&state).await { Ok(value) => value, Err(code) => return response_error(StatusCode::UNAUTHORIZED, code) };
-    let (calendar_id, calendar_created) = match google_keychain_read(GOOGLE_CALENDAR_ACCOUNT).await {
+    let access_token = match google_access_token(&state).await {
+        Ok(value) => value,
+        Err(code) => return response_error(StatusCode::UNAUTHORIZED, code),
+    };
+    let (calendar_id, calendar_created) = match google_keychain_read(GOOGLE_CALENDAR_ACCOUNT).await
+    {
         Ok(Some(value)) => (value, false),
-        Ok(None) => match create_google_calendar(&state, &access_token).await { Ok(value) => (value, true), Err(code) => return response_error(StatusCode::BAD_GATEWAY, code) },
+        Ok(None) => match create_google_calendar(&state, &access_token).await {
+            Ok(value) => (value, true),
+            Err(code) => return response_error(StatusCode::BAD_GATEWAY, code),
+        },
         Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
     };
-    let mut map = match google_event_map().await { Ok(value) => value, Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code) };
+    let mut map = match google_event_map().await {
+        Ok(value) => value,
+        Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
+    };
     let mut results = Vec::with_capacity(input.items.len());
     for item in input.items {
         let event_id = google_event_id(&item.item_id);
         let event = json!({"id":event_id,"summary":item.title,"description":item.description.unwrap_or_default(),"location":item.location.unwrap_or_default(),"start":{"dateTime":item.start,"timeZone":"America/Los_Angeles"},"end":{"dateTime":item.end,"timeZone":"America/Los_Angeles"}});
-        let url = match google_api_url(Some(&calendar_id), Some(&event_id)) { Ok(value) => value, Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code) };
-        let first = state.0.client.post(url.clone()).bearer_auth(&access_token).json(&event).send().await;
+        let url = match google_api_url(Some(&calendar_id), Some(&event_id)) {
+            Ok(value) => value,
+            Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
+        };
+        let first = state
+            .0
+            .client
+            .post(url.clone())
+            .bearer_auth(&access_token)
+            .json(&event)
+            .send()
+            .await;
         let outcome = match first {
             Ok(response) if response.status().is_success() => Ok("created"),
-            Ok(response) if response.status().as_u16() == 409 => match state.0.client.patch(url).bearer_auth(&access_token).json(&event).send().await {
+            Ok(response) if response.status().as_u16() == 409 => match state
+                .0
+                .client
+                .patch(url)
+                .bearer_auth(&access_token)
+                .json(&event)
+                .send()
+                .await
+            {
                 Ok(update) if update.status().is_success() => Ok("updated"),
                 Ok(update) => Err(google_status_code(update.status())),
                 Err(_) => Err("GOOGLE_NETWORK_ERROR"),
@@ -1705,34 +2261,65 @@ async fn google_sync(State(state): State<AppState>, Json(input): Json<GoogleSync
                 map.insert(item.item_id.clone(), event_id);
                 match save_google_event_map(&map).await {
                     Ok(()) => results.push(json!({"itemId":item.item_id,"status":status})),
-                    Err(code) => results.push(json!({"itemId":item.item_id,"status":"failed","error":code})),
+                    Err(code) => {
+                        results.push(json!({"itemId":item.item_id,"status":"failed","error":code}))
+                    }
                 }
             }
-            Err(code) => results.push(json!({"itemId":item.item_id,"status":"failed","error":code})),
+            Err(code) => {
+                results.push(json!({"itemId":item.item_id,"status":"failed","error":code}))
+            }
         }
     }
-    let synced = results.iter().filter(|row| row.get("status").and_then(Value::as_str) != Some("failed")).count();
+    let synced = results
+        .iter()
+        .filter(|row| row.get("status").and_then(Value::as_str) != Some("failed"))
+        .count();
     (StatusCode::OK, Json(json!({"synced":synced,"failed":results.len()-synced,"calendarCreated":calendar_created,"results":results}))).into_response()
 }
 
-async fn google_remove(State(state): State<AppState>, Json(input): Json<GoogleRemoveRequest>) -> Response {
-    if input.item_ids.is_empty() || input.item_ids.len() > 50 { return response_error(StatusCode::BAD_REQUEST, "GOOGLE_REMOVE_ITEM_COUNT_INVALID"); }
-    let access_token = match google_access_token(&state).await { Ok(value) => value, Err(code) => return response_error(StatusCode::UNAUTHORIZED, code) };
+async fn google_remove(
+    State(state): State<AppState>,
+    Json(input): Json<GoogleRemoveRequest>,
+) -> Response {
+    if input.item_ids.is_empty() || input.item_ids.len() > 50 {
+        return response_error(StatusCode::BAD_REQUEST, "GOOGLE_REMOVE_ITEM_COUNT_INVALID");
+    }
+    let access_token = match google_access_token(&state).await {
+        Ok(value) => value,
+        Err(code) => return response_error(StatusCode::UNAUTHORIZED, code),
+    };
     let Some(calendar_id) = (match google_keychain_read(GOOGLE_CALENDAR_ACCOUNT).await {
         Ok(value) => value,
         Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
-    }) else { return response_error(StatusCode::NOT_FOUND, "GOOGLE_CALENDAR_NOT_FOUND"); };
-    let mut map = match google_event_map().await { Ok(value) => value, Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code) };
+    }) else {
+        return response_error(StatusCode::NOT_FOUND, "GOOGLE_CALENDAR_NOT_FOUND");
+    };
+    let mut map = match google_event_map().await {
+        Ok(value) => value,
+        Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
+    };
     let mut seen = HashSet::new();
     let mut results = Vec::new();
     for item_id in input.item_ids {
-        if item_id.is_empty() || item_id.len() > 256 || !seen.insert(item_id.clone()) { return response_error(StatusCode::BAD_REQUEST, "GOOGLE_REMOVE_ITEM_INVALID"); }
+        if item_id.is_empty() || item_id.len() > 256 || !seen.insert(item_id.clone()) {
+            return response_error(StatusCode::BAD_REQUEST, "GOOGLE_REMOVE_ITEM_INVALID");
+        }
         let Some(event_id) = map.get(&item_id).cloned() else {
             results.push(json!({"itemId":item_id,"status":"not-synced"}));
             continue;
         };
-        let url = match google_api_url(Some(&calendar_id), Some(&event_id)) { Ok(value) => value, Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code) };
-        let response = state.0.client.delete(url).bearer_auth(&access_token).send().await;
+        let url = match google_api_url(Some(&calendar_id), Some(&event_id)) {
+            Ok(value) => value,
+            Err(code) => return response_error(StatusCode::INTERNAL_SERVER_ERROR, code),
+        };
+        let response = state
+            .0
+            .client
+            .delete(url)
+            .bearer_auth(&access_token)
+            .send()
+            .await;
         match response {
             Ok(response) if response.status().is_success() || response.status().as_u16() == 404 => {
                 map.remove(&item_id);
@@ -1745,8 +2332,15 @@ async fn google_remove(State(state): State<AppState>, Json(input): Json<GoogleRe
             Err(_) => results.push(json!({"itemId":item_id,"status":"failed","error":"GOOGLE_NETWORK_ERROR"})),
         }
     }
-    let removed = results.iter().filter(|row| row.get("status").and_then(Value::as_str) == Some("removed")).count();
-    (StatusCode::OK, Json(json!({"removed":removed,"results":results}))).into_response()
+    let removed = results
+        .iter()
+        .filter(|row| row.get("status").and_then(Value::as_str) == Some("removed"))
+        .count();
+    (
+        StatusCode::OK,
+        Json(json!({"removed":removed,"results":results})),
+    )
+        .into_response()
 }
 
 async fn health(State(state): State<AppState>) -> Response {
@@ -1759,7 +2353,10 @@ async fn health(State(state): State<AppState>) -> Response {
 
 async fn runtime_config() -> Response {
     (
-        [(header::CONTENT_TYPE, HeaderValue::from_static("application/javascript; charset=utf-8"))],
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/javascript; charset=utf-8"),
+        )],
         "globalThis.REINVENT_RUNTIME=Object.freeze({mode:'live'});",
     )
         .into_response()
@@ -1836,7 +2433,10 @@ async fn main() {
         .route("/api/live/recommendation-news", get(recommendation_news))
         .route("/api/live/personal-time", post(live_personal_time))
         .route("/api/live/reservations", post(live_reserve_sessions))
-        .route("/api/live/reservations/cancel", post(live_cancel_reservations))
+        .route(
+            "/api/live/reservations/cancel",
+            post(live_cancel_reservations),
+        )
         .route("/api/google/status", get(google_status))
         .route("/api/google/configure", post(google_configure))
         .route("/api/google/connect", post(google_connect))
@@ -1871,7 +2471,9 @@ mod tests {
 
     #[test]
     fn google_configuration_and_event_times_are_strictly_validated() {
-        assert!(valid_google_client_id("12345-example.apps.googleusercontent.com"));
+        assert!(valid_google_client_id(
+            "12345-example.apps.googleusercontent.com"
+        ));
         assert!(!valid_google_client_id("not-a-client-id"));
         assert!(valid_google_datetime("2026-11-30T17:00:00.000Z"));
         assert!(!valid_google_datetime("2026-99-30T17:00:00.000Z"));
@@ -1882,14 +2484,22 @@ mod tests {
     #[test]
     fn google_calendar_paths_encode_ids_as_individual_segments() {
         let url = google_api_url(Some("calendar+id@example.com"), Some("event/id")).unwrap();
-        assert_eq!(url.path(), "/calendar/v3/calendars/calendar+id@example.com/events/event%2Fid");
+        assert_eq!(
+            url.path(),
+            "/calendar/v3/calendars/calendar+id@example.com/events/event%2Fid"
+        );
     }
 
     #[test]
     fn google_event_ids_are_deterministic_and_api_safe() {
         let first = google_event_id("aws:session-123");
         assert_eq!(first, google_event_id("aws:session-123"));
-        assert!(first.len() >= 5 && first.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'v').contains(&byte)));
+        assert!(
+            first.len() >= 5
+                && first
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'v').contains(&byte))
+        );
     }
 
     #[test]

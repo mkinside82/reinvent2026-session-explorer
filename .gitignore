@@ -22,6 +22,8 @@ private/
 app/dist/
 app/server/target/
 app/qa/
+node_modules/
+.pnpm-store/
 
 # Import provenance metadata may contain private hosting project identifiers
 SOURCE-MANIFEST.json

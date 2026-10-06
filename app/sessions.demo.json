@@ -12,22 +12,10 @@
     "type": "Breakout session",
     "venue": "Demo venue A",
     "room": "Room 101",
-    "speakers": [
-      "Demo Speaker A"
-    ],
-    "topics": [
-      "Agents",
-      "Observability",
-      "Architecture"
-    ],
-    "services": [
-      "Amazon Bedrock",
-      "Amazon SageMaker"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker A"],
+    "topics": ["Agents", "Observability", "Architecture"],
+    "services": ["Amazon Bedrock", "Amazon SageMaker"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -46,22 +34,10 @@
     "type": "Breakout session",
     "venue": "Demo venue B",
     "room": "Room 202",
-    "speakers": [
-      "Demo Speaker B"
-    ],
-    "topics": [
-      "AI Delivery",
-      "CI/CD",
-      "Developer Experience"
-    ],
-    "services": [
-      "AWS CodeBuild",
-      "Amazon Q Developer"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker B"],
+    "topics": ["AI Delivery", "CI/CD", "Developer Experience"],
+    "services": ["AWS CodeBuild", "Amazon Q Developer"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -80,22 +56,10 @@
     "type": "Breakout session",
     "venue": "Demo venue C",
     "room": "Room 303",
-    "speakers": [
-      "Demo Speaker C"
-    ],
-    "topics": [
-      "SaaS",
-      "Architecture",
-      "Security"
-    ],
-    "services": [
-      "Amazon Cognito",
-      "Amazon EventBridge"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker C"],
+    "topics": ["SaaS", "Architecture", "Security"],
+    "services": ["Amazon Cognito", "Amazon EventBridge"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "full",
       "attendance": "none"
@@ -114,21 +78,10 @@
     "type": "Chalk talk",
     "venue": "Demo venue D",
     "room": "Room 404",
-    "speakers": [
-      "Demo Speaker D"
-    ],
-    "topics": [
-      "Observability",
-      "Reliability",
-      "SRE"
-    ],
-    "services": [
-      "Amazon CloudWatch"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker D"],
+    "topics": ["Observability", "Reliability", "SRE"],
+    "services": ["Amazon CloudWatch"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "reserved"
@@ -147,22 +100,10 @@
     "type": "Breakout session",
     "venue": "Demo venue E",
     "room": "Room 505",
-    "speakers": [
-      "Demo Speaker E"
-    ],
-    "topics": [
-      "RBAC",
-      "Authorization",
-      "Security"
-    ],
-    "services": [
-      "AWS IAM",
-      "Amazon Verified Permissions"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker E"],
+    "topics": ["RBAC", "Authorization", "Security"],
+    "services": ["AWS IAM", "Amazon Verified Permissions"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -178,24 +119,13 @@
     "endTime": "10:00",
     "sessionType": "Breakout session",
     "track": "Databases",
-    "topics": [
-      "Databases",
-      "Architecture"
-    ],
+    "topics": ["Databases", "Architecture"],
     "level": "200",
     "venue": "Demo venue A",
     "room": "Demo Room 100",
-    "speakers": [
-      "Demo Speaker A"
-    ],
-    "services": [
-      "Amazon Aurora",
-      "Amazon DynamoDB"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker A"],
+    "services": ["Amazon Aurora", "Amazon DynamoDB"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -211,24 +141,13 @@
     "endTime": "12:00",
     "sessionType": "Chalk talk",
     "track": "AI / ML",
-    "topics": [
-      "Evaluation",
-      "Generative AI"
-    ],
+    "topics": ["Evaluation", "Generative AI"],
     "level": "200",
     "venue": "Demo venue B",
     "room": "Demo Room 101",
-    "speakers": [
-      "Demo Speaker B"
-    ],
-    "services": [
-      "Amazon Bedrock",
-      "Amazon SageMaker"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker B"],
+    "services": ["Amazon Bedrock", "Amazon SageMaker"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "full",
       "attendance": "none"
@@ -244,24 +163,13 @@
     "endTime": "16:00",
     "sessionType": "Workshop",
     "track": "Developer Tools",
-    "topics": [
-      "CI/CD",
-      "Terraform"
-    ],
+    "topics": ["CI/CD", "Terraform"],
     "level": "300",
     "venue": "Demo venue C",
     "room": "Demo Room 102",
-    "speakers": [
-      "Demo Speaker C"
-    ],
-    "services": [
-      "AWS CodeBuild",
-      "Amazon Q Developer"
-    ],
-    "keywords": [
-      "hands-on",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker C"],
+    "services": ["AWS CodeBuild", "Amazon Q Developer"],
+    "keywords": ["hands-on", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -277,24 +185,13 @@
     "endTime": "14:30",
     "sessionType": "Breakout session",
     "track": "Security",
-    "topics": [
-      "Identity",
-      "Security"
-    ],
+    "topics": ["Identity", "Security"],
     "level": "200",
     "venue": "Demo venue D",
     "room": "Demo Room 103",
-    "speakers": [
-      "Demo Speaker D"
-    ],
-    "services": [
-      "AWS IAM",
-      "Amazon Verified Permissions"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker D"],
+    "services": ["AWS IAM", "Amazon Verified Permissions"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -310,26 +207,13 @@
     "endTime": "17:00",
     "sessionType": "Chalk talk",
     "track": "Compute",
-    "topics": [
-      "Architecture",
-      "Reliability",
-      "Serverless",
-      "Containers"
-    ],
+    "topics": ["Architecture", "Reliability", "Serverless", "Containers"],
     "level": "300",
     "venue": "Demo venue E",
     "room": "Demo Room 104",
-    "speakers": [
-      "Demo Speaker E"
-    ],
-    "services": [
-      "AWS Lambda",
-      "Amazon ECS"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker E"],
+    "services": ["AWS Lambda", "Amazon ECS"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -345,24 +229,13 @@
     "endTime": "10:30",
     "sessionType": "Breakout session",
     "track": "AI / ML",
-    "topics": [
-      "Agents",
-      "Evaluation"
-    ],
+    "topics": ["Agents", "Evaluation"],
     "level": "400",
     "venue": "Demo venue A",
     "room": "Demo Room 105",
-    "speakers": [
-      "Demo Speaker A"
-    ],
-    "services": [
-      "Amazon Bedrock",
-      "Amazon SageMaker"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker A"],
+    "services": ["Amazon Bedrock", "Amazon SageMaker"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "full",
       "attendance": "waitlist"
@@ -378,24 +251,13 @@
     "endTime": "11:30",
     "sessionType": "Chalk talk",
     "track": "SaaS",
-    "topics": [
-      "SaaS",
-      "Identity"
-    ],
+    "topics": ["SaaS", "Identity"],
     "level": "200",
     "venue": "Demo venue B",
     "room": "Demo Room 106",
-    "speakers": [
-      "Demo Speaker B"
-    ],
-    "services": [
-      "Amazon Cognito",
-      "Amazon EventBridge"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker B"],
+    "services": ["Amazon Cognito", "Amazon EventBridge"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -411,24 +273,13 @@
     "endTime": "14:00",
     "sessionType": "Breakout session",
     "track": "Databases",
-    "topics": [
-      "Event-driven",
-      "Databases"
-    ],
+    "topics": ["Event-driven", "Databases"],
     "level": "300",
     "venue": "Demo venue C",
     "room": "Demo Room 107",
-    "speakers": [
-      "Demo Speaker C"
-    ],
-    "services": [
-      "Amazon Aurora",
-      "Amazon DynamoDB"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker C"],
+    "services": ["Amazon Aurora", "Amazon DynamoDB"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -444,23 +295,13 @@
     "endTime": "15:00",
     "sessionType": "Breakout session",
     "track": "Networking",
-    "topics": [
-      "Networking",
-      "Security"
-    ],
+    "topics": ["Networking", "Security"],
     "level": "200",
     "venue": "Demo venue D",
     "room": "Demo Room 108",
-    "speakers": [
-      "Demo Speaker D"
-    ],
-    "services": [
-      "Amazon VPC"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker D"],
+    "services": ["Amazon VPC"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -476,23 +317,13 @@
     "endTime": "11:00",
     "sessionType": "Workshop",
     "track": "Operations",
-    "topics": [
-      "Reliability",
-      "Observability"
-    ],
+    "topics": ["Reliability", "Observability"],
     "level": "300",
     "venue": "Demo venue E",
     "room": "Demo Room 109",
-    "speakers": [
-      "Demo Speaker E"
-    ],
-    "services": [
-      "Amazon CloudWatch"
-    ],
-    "keywords": [
-      "hands-on",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker E"],
+    "services": ["Amazon CloudWatch"],
+    "keywords": ["hands-on", "cloud architecture"],
     "uiState": {
       "availability": "full",
       "attendance": "none"
@@ -508,24 +339,13 @@
     "endTime": "12:00",
     "sessionType": "Breakout session",
     "track": "AI / ML",
-    "topics": [
-      "Generative AI",
-      "Serverless"
-    ],
+    "topics": ["Generative AI", "Serverless"],
     "level": "100",
     "venue": "Demo venue A",
     "room": "Demo Room 110",
-    "speakers": [
-      "Demo Speaker A"
-    ],
-    "services": [
-      "Amazon Bedrock",
-      "Amazon SageMaker"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker A"],
+    "services": ["Amazon Bedrock", "Amazon SageMaker"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -541,24 +361,13 @@
     "endTime": "14:00",
     "sessionType": "Builders’ session",
     "track": "SaaS",
-    "topics": [
-      "Authorization",
-      "RBAC"
-    ],
+    "topics": ["Authorization", "RBAC"],
     "level": "300",
     "venue": "Demo venue B",
     "room": "Demo Room 111",
-    "speakers": [
-      "Demo Speaker B"
-    ],
-    "services": [
-      "Amazon Cognito",
-      "Amazon EventBridge"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "speakers": ["Demo Speaker B"],
+    "services": ["Amazon Cognito", "Amazon EventBridge"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
@@ -572,18 +381,10 @@
     "date": "2026-12-03",
     "sessionType": "Chalk talk",
     "track": "Developer Tools",
-    "topics": [
-      "Developer Experience"
-    ],
+    "topics": ["Developer Experience"],
     "level": "300",
-    "services": [
-      "AWS CodeBuild",
-      "Amazon Q Developer"
-    ],
-    "keywords": [
-      "best practices",
-      "cloud architecture"
-    ],
+    "services": ["AWS CodeBuild", "Amazon Q Developer"],
+    "keywords": ["best practices", "cloud architecture"],
     "uiState": {
       "availability": "available",
       "attendance": "none"
