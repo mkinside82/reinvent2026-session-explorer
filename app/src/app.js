@@ -136,6 +136,17 @@ const state = {
   comparison: [],
   draft: null,
 };
+const recommendationObjectIds = new WeakMap();
+let recommendationObjectSequence = 0;
+let recommendationMarkupCache = { key: '', html: '' };
+function recommendationObjectId(value) {
+  let id = recommendationObjectIds.get(value);
+  if (!id) {
+    id = ++recommendationObjectSequence;
+    recommendationObjectIds.set(value, id);
+  }
+  return id;
+}
 const FACET_LABELS = {
   date: 'Date',
   track: 'Track',
@@ -965,34 +976,58 @@ function renderRecommendationsPanel(items = plannerItems()) {
     root.innerHTML = '';
     return;
   }
-  root.innerHTML = renderRecommendations(
-    [
-      ...getRecommendations(state.sessions, { plan: items }),
-      ...getNewsRecommendations(state.sessions, state.recommendationNews, { plan: items }),
-    ],
-    new Set(state.plan),
-    state.recommendationInterests,
-    getPersonalizedRecommendations(state.sessions, {
-      interests: state.recommendationInterests,
-      plan: items,
-    }),
-    state.recommendationNews,
-  );
-  root.querySelectorAll('[data-interest]').forEach((button) =>
-    button.addEventListener('click', () => {
-      const id = button.dataset.interest;
-      state.recommendationInterests = state.recommendationInterests.includes(id)
-        ? state.recommendationInterests.filter((value) => value !== id)
-        : [...state.recommendationInterests, id];
-      try {
-        storage.setItem(
-          'reinvent-recommendation-interests',
-          JSON.stringify(state.recommendationInterests),
-        );
-      } catch {}
-      renderRecommendationsPanel();
-    }),
-  );
+  const planKey = items
+    .map((item) => `${item.id}:${item.date}:${item.startTime}:${item.endTime}`)
+    .join(',');
+  const news = state.recommendationNews;
+  const cacheKey = [
+    recommendationObjectId(state.sessions),
+    planKey,
+    [...state.plan].sort().join(','),
+    [...state.recommendationInterests].sort().join(','),
+    recommendationObjectId(news.items),
+    news.fetchedAt || '',
+    news.refreshing,
+    news.error || '',
+    getLanguage(),
+    new Date().toISOString().slice(0, 10),
+  ].join('|');
+  if (recommendationMarkupCache.key !== cacheKey || !recommendationMarkupCache.html) {
+    recommendationMarkupCache = {
+      key: cacheKey,
+      html: renderRecommendations(
+        [
+          ...getRecommendations(state.sessions, { plan: items }),
+          ...getNewsRecommendations(state.sessions, news, { plan: items }),
+        ],
+        new Set(state.plan),
+        state.recommendationInterests,
+        getPersonalizedRecommendations(state.sessions, {
+          interests: state.recommendationInterests,
+          plan: items,
+        }),
+        news,
+      ),
+    };
+  }
+  const markupChanged = root.innerHTML !== recommendationMarkupCache.html;
+  if (markupChanged) root.innerHTML = recommendationMarkupCache.html;
+  if (markupChanged)
+    root.querySelectorAll('[data-interest]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const id = button.dataset.interest;
+        state.recommendationInterests = state.recommendationInterests.includes(id)
+          ? state.recommendationInterests.filter((value) => value !== id)
+          : [...state.recommendationInterests, id];
+        try {
+          storage.setItem(
+            'reinvent-recommendation-interests',
+            JSON.stringify(state.recommendationInterests),
+          );
+        } catch {}
+        renderRecommendationsPanel();
+      }),
+    );
 }
 function renderSearch() {
   renderKindSwitch();
@@ -1253,7 +1288,7 @@ function buildFacets() {
       ...new Set(
         source
           .flatMap((s) =>
-            key === 'venue' ? [s.venue, s.room] : Array.isArray(s[field]) ? s[field] : [s[field]],
+            key === 'venue' ? [s.venue] : Array.isArray(s[field]) ? s[field] : [s[field]],
           )
           .filter(Boolean),
       ),

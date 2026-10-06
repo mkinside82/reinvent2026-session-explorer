@@ -21,46 +21,104 @@ const corpus = (s) =>
     .join(' ')
     .normalize('NFKC')
     .toLocaleLowerCase();
+const catalogIndexes = new WeakMap();
+function catalogIndex(items) {
+  let index = catalogIndexes.get(items);
+  if (!index) {
+    index = {
+      rows: items.map((item) => ({ item, text: corpus(item) })),
+      trends: new Map(),
+      interests: new Map(),
+      news: new WeakMap(),
+    };
+    catalogIndexes.set(items, index);
+  }
+  return index;
+}
+function remember(cache, key, value, limit = 16) {
+  cache.set(key, value);
+  if (cache.size > limit) cache.delete(cache.keys().next().value);
+  return value;
+}
+function candidatesByTerms(index, cache, key, terms, today) {
+  let candidates = cache.get(key);
+  if (!candidates) {
+    const normalizedTerms = terms.map((term) => term.toLocaleLowerCase());
+    candidates = index.rows
+      .filter(
+        ({ item, text }) =>
+          (!item.date || item.date >= today) && normalizedTerms.some((term) => text.includes(term)),
+      )
+      .map(({ item }) => item);
+    remember(cache, key, candidates, 32);
+  }
+  return candidates;
+}
 const expired = (date, today) => !date || date < today;
 const timeMinutes = (value) => {
   const match = /^(\d{2}):(\d{2})$/.exec(value || '');
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 };
+function planContext(plan) {
+  const ids = new Set(),
+    byDate = new Map();
+  for (const item of plan) {
+    ids.add(item.id);
+    const start = timeMinutes(item.startTime),
+      end = timeMinutes(item.endTime);
+    if (!item.date || start === null || end === null) continue;
+    if (!byDate.has(item.date)) byDate.set(item.date, []);
+    byDate.get(item.date).push([start, end]);
+  }
+  return { ids, byDate };
+}
 function fitsPlan(item, plan) {
   const start = timeMinutes(item.startTime),
     end = timeMinutes(item.endTime);
   if (!item.date || start === null || end === null) return null;
-  return !plan.some((existing) => {
-    if (existing.date !== item.date) return false;
-    const otherStart = timeMinutes(existing.startTime),
-      otherEnd = timeMinutes(existing.endTime);
-    return otherStart !== null && otherEnd !== null && start < otherEnd && otherStart < end;
-  });
+  return !(plan.byDate.get(item.date) || []).some(
+    ([otherStart, otherEnd]) => start < otherEnd && otherStart < end,
+  );
+}
+function topMatches(items, limit, compare) {
+  const top = [];
+  for (const item of items) {
+    const position = top.findIndex((existing) => compare(item, existing) < 0);
+    if (position === -1) {
+      if (top.length < limit) top.push(item);
+    } else {
+      top.splice(position, 0, item);
+      if (top.length > limit) top.pop();
+    }
+  }
+  return top;
 }
 export function getRecommendations(
   items,
   { today = new Date().toISOString().slice(0, 10), limit = 3, plan = [] } = {},
 ) {
-  const planned = new Set(plan.map((item) => item.id));
+  const catalog = catalogIndex(items),
+    schedule = planContext(plan);
   return TREND_SIGNALS.filter((signal) => !expired(signal.expiresAt, today))
     .map((signal) => {
-      const terms = signal.terms.map((term) => term.toLocaleLowerCase());
-      const matches = items
-        .filter(
-          (item) =>
-            !planned.has(item.id) &&
-            (!item.date || item.date >= today) &&
-            terms.some((term) => corpus(item).includes(term)),
-        )
-        .map((item) => ({ ...item, fitsPlan: fitsPlan(item, plan) }))
-        .sort(
-          (a, b) =>
-            Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
-            Number(b.reservable === true) - Number(a.reservable === true) ||
-            Number(b.level || 0) - Number(a.level || 0) ||
-            a.title.localeCompare(b.title),
-        )
-        .slice(0, limit);
+      const candidates = candidatesByTerms(
+        catalog,
+        catalog.trends,
+        `${today}:${signal.id}`,
+        signal.terms,
+        today,
+      );
+      const matches = topMatches(
+        candidates
+          .filter((item) => !schedule.ids.has(item.id))
+          .map((item) => ({ ...item, fitsPlan: fitsPlan(item, schedule) })),
+        limit,
+        (a, b) =>
+          Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
+          Number(b.reservable === true) - Number(a.reservable === true) ||
+          Number(b.level || 0) - Number(a.level || 0) ||
+          a.title.localeCompare(b.title),
+      );
       return { ...signal, matches };
     })
     .filter((signal) => signal.matches.length);
@@ -107,40 +165,52 @@ export function getNewsRecommendations(
   { today = new Date().toISOString().slice(0, 10), limit = 3, plan = [] } = {},
 ) {
   if (!Array.isArray(news?.items)) return [];
-  const planned = new Set(plan.map((item) => item.id));
+  const catalog = catalogIndex(items),
+    schedule = planContext(plan);
+  let articleCache = catalog.news.get(news.items);
+  if (!articleCache) {
+    articleCache = new Map();
+    catalog.news.set(news.items, articleCache);
+  }
   return news.items
-    .map((article, index) => {
+    .map((article, articleIndex) => {
       const terms = newsTerms(article);
       if (!terms.length) return null;
-      const matches = items
-        .filter((item) => !planned.has(item.id) && (!item.date || item.date >= today))
-        .map((item) => {
-          const text = corpus(item);
-          const matchedTerms = terms.filter((term) => text.includes(term));
-          return matchedTerms.length
-            ? {
-                ...item,
-                matchedTerms,
-                fitsPlan: fitsPlan(item, plan),
-                matchScore: matchedTerms.length,
-              }
-            : null;
-        })
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            b.matchScore - a.matchScore ||
-            Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
-            Number(b.reservable === true) - Number(a.reservable === true) ||
-            a.title.localeCompare(b.title),
-        )
-        .slice(0, 3);
+      const cacheKey = `${today}:${articleIndex}:${terms.join('\u0000')}`;
+      let candidates = articleCache.get(cacheKey);
+      if (!candidates) {
+        const normalizedTerms = terms.map((term) => term.toLocaleLowerCase());
+        candidates = catalog.rows
+          .filter(({ item }) => !item.date || item.date >= today)
+          .map(({ item, text }) => {
+            const matchedTerms = normalizedTerms.filter((term) => text.includes(term));
+            return matchedTerms.length ? { item, matchedTerms } : null;
+          })
+          .filter(Boolean);
+        articleCache.set(cacheKey, candidates);
+      }
+      const matches = topMatches(
+        candidates
+          .filter(({ item }) => !schedule.ids.has(item.id))
+          .map(({ item, matchedTerms }) => ({
+            ...item,
+            matchedTerms,
+            fitsPlan: fitsPlan(item, schedule),
+            matchScore: matchedTerms.length,
+          })),
+        3,
+        (a, b) =>
+          b.matchScore - a.matchScore ||
+          Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
+          Number(b.reservable === true) - Number(a.reservable === true) ||
+          a.title.localeCompare(b.title),
+      );
       if (!matches.length) return null;
       const published = article.publishedAt || '';
       const summary =
         article.summary || 'AWS公式ブログの最新記事とセッションのキーワードが一致しました。';
       return {
-        id: `aws-news-${index}`,
+        id: `aws-news-${articleIndex}`,
         title: article.title,
         reason: summary.length > 280 ? `${summary.slice(0, 277)}…` : summary,
         matches,
@@ -158,27 +228,37 @@ export function getPersonalizedRecommendations(
 ) {
   const selected = RECOMMENDATION_INTERESTS.filter((option) => interests.includes(option.id));
   if (!selected.length) return [];
-  const planned = new Set(plan.map((item) => item.id));
-  return items
-    .filter((item) => !planned.has(item.id) && (!item.date || item.date >= today))
-    .map((item) => {
-      const text = corpus(item),
-        matchedInterests = selected
+  const index = catalogIndex(items),
+    schedule = planContext(plan);
+  const key = `${today}:${selected.map((option) => option.id).join(',')}`;
+  let candidates = index.interests.get(key);
+  if (!candidates) {
+    candidates = index.rows
+      .filter(({ item }) => !item.date || item.date >= today)
+      .map(({ item, text }) => {
+        const matchedInterests = selected
           .filter((option) => option.terms.some((term) => text.includes(term)))
           .map((option) => option.id);
-      return matchedInterests.length
-        ? { ...item, matchedInterests, fitsPlan: fitsPlan(item, plan) }
-        : null;
-    })
-    .filter(Boolean)
-    .sort(
-      (a, b) =>
-        b.matchedInterests.length - a.matchedInterests.length ||
-        Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
-        Number(b.reservable === true) - Number(a.reservable === true) ||
-        a.title.localeCompare(b.title),
-    )
-    .slice(0, limit);
+        return matchedInterests.length ? { item, matchedInterests } : null;
+      })
+      .filter(Boolean);
+    remember(index.interests, key, candidates, 16);
+  }
+  return topMatches(
+    candidates
+      .filter(({ item }) => !schedule.ids.has(item.id))
+      .map(({ item, matchedInterests }) => ({
+        ...item,
+        matchedInterests,
+        fitsPlan: fitsPlan(item, schedule),
+      })),
+    limit,
+    (a, b) =>
+      b.matchedInterests.length - a.matchedInterests.length ||
+      Number(b.fitsPlan === true) - Number(a.fitsPlan === true) ||
+      Number(b.reservable === true) - Number(a.reservable === true) ||
+      a.title.localeCompare(b.title),
+  );
 }
 export function renderRecommendations(
   recommendations,
