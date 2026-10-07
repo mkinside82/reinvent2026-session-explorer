@@ -10,7 +10,7 @@ export const MULTI_KEYS = [
   'service',
   'speaker',
 ];
-const FILTER_KEYS = ['q', 'from', 'to', 'fit', ...MULTI_KEYS];
+const FILTER_KEYS = ['q', 'from', 'to', 'fit', 'walkUpOnly', ...MULTI_KEYS];
 const OWNED_KEYS = new Set([
   ...FILTER_KEYS,
   'view',
@@ -18,6 +18,7 @@ const OWNED_KEYS = new Set([
   'kind',
   'minLevel',
   'unleveled',
+  'walkUpOnly',
   'levelDefault',
 ]);
 export const defaultFilters = () => ({
@@ -27,6 +28,7 @@ export const defaultFilters = () => ({
   fit: 'overlap',
   minLevel: null,
   includeUnleveled: false,
+  walkUpOnly: false,
   levelDefaultSuppressed: false,
   ...Object.fromEntries(MULTI_KEYS.map((key) => [key, []])),
 });
@@ -46,6 +48,7 @@ export function readSearchState(url) {
     minimum = rawMinimum === null ? Number.NaN : Number(rawMinimum);
   f.minLevel = Number.isFinite(minimum) && minimum >= 0 && minimum <= 999 ? minimum : null;
   f.includeUnleveled = p.get('unleveled') === '1';
+  f.walkUpOnly = p.get('walkUpOnly') === '1';
   f.levelDefaultSuppressed = p.get('levelDefault') === 'off';
   const hasFilterCondition =
     FILTER_KEYS.some((key) => p.has(key)) || p.has('minLevel') || p.has('unleveled');
@@ -71,6 +74,7 @@ export function searchURL(url, { filters, view, sort, kind = 'sessions' }) {
   if (filters.minLevel !== null && filters.minLevel !== undefined)
     result.searchParams.set('minLevel', String(filters.minLevel));
   if (filters.includeUnleveled) result.searchParams.set('unleveled', '1');
+  if (filters.walkUpOnly) result.searchParams.set('walkUpOnly', '1');
   if (filters.levelDefaultSuppressed) result.searchParams.set('levelDefault', 'off');
   if (view === 'compact') result.searchParams.set('view', 'compact');
   if (sort === 'title') result.searchParams.set('sort', 'title');

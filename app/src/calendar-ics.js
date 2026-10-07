@@ -97,6 +97,8 @@ function eventFor(item, stamp) {
   if (!start || !end || end <= start) return null;
   const uid = `${encodeURIComponent(item.id).replace(/%/g, '_')}@reinvent-session-explorer`;
   const description = [
+    item.calendarStatusLine,
+    item.calendarAvailability,
     item.abstract,
     item.code ? `Session: ${item.code}` : '',
     `Venue local time zone: ${TZ}`,
@@ -104,13 +106,16 @@ function eventFor(item, stamp) {
     .filter(Boolean)
     .join('\n');
   const location = [item.venue, item.room].filter(Boolean).join(' · ');
+  const summaryPrefix = [item.calendarAvailability, item.calendarStatus]
+    .filter(Boolean)
+    .join(' · ');
   return [
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${stamp}`,
     `DTSTART:${start}`,
     `DTEND:${end}`,
-    `SUMMARY:${escaped(item.title)}`,
+    `SUMMARY:${escaped(summaryPrefix ? `[${summaryPrefix}] ${item.title}` : item.title)}`,
     ...(description ? [`DESCRIPTION:${escaped(description)}`] : []),
     ...(location ? [`LOCATION:${escaped(location)}`] : []),
     'END:VEVENT',

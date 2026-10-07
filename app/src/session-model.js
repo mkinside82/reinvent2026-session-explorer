@@ -147,10 +147,14 @@ function matches(s, filters) {
           ...(s.industries || []),
           ...(s.roles || []),
           ...(s.keywords || []),
+          ...(s.uiState?.availability === 'walkUp'
+            ? ['Walk-up', 'Walk-up Only', 'Walkup', 'Walk up', '当日参加']
+            : []),
         ].join(' '),
       ),
     );
   if (query && !searchText.get(s).includes(query)) return false;
+  if (filters.walkUpOnly && s.uiState?.availability !== 'walkUp') return false;
   for (const key of ['date', 'track', 'level', 'sessionType']) {
     const values = selections(filters[key]);
     if (values.length && !values.includes(s[key])) return false;

@@ -16,7 +16,7 @@ pnpm build
 pnpm demo
 ```
 
-Open the loopback URL printed in the terminal and stop the server with `Ctrl-C`. Preview does not sign in or call AWS or Google APIs.
+Open the loopback URL printed in the terminal and stop the server with `Ctrl-C`. Preview does not sign in or call the AWS Events API.
 
 ### AWS-connected app (real data)
 
@@ -47,13 +47,13 @@ The **Translate to Japanese** action in session details uses Chrome's on-device 
 
 Recommendations in the AWS-connected app include source-linked, dated themes that expire automatically. The app also fetches RSS feeds from the official AWS News, Machine Learning, and Security Blogs in the background, with a six-hour cache before another refresh. It suggests sessions only when article titles or categories match session content, and keeps the last successful feed snapshot if refresh fails. You can choose interest areas; matching sessions are ranked with your My Plan conflicts and saved in the current browser.
 
-The AWS-connected app reads the attendee's AWS Events catalog. At startup it reads reserved sessions, favorites, and personal time from AWS Schedule in the background. Reserved sessions and personal time appear in the My Plan Timeline / List without duplicating local picks; favorites appear in a dedicated tab and can be added to My Plan from a card. You can add or remove a favorite from a session card or detail view, and submit up to 10 AWS sessions from My Plan as favorites in one reviewed batch. Favorites record interest only; they do not reserve a seat. Favorites are not added to the plan automatically. You can create, edit, and delete AWS personal-time entries from My Plan; writes are reconciled against a fresh AWS Schedule read. UTC times are converted to venue time. Search and other actions remain usable while Schedule loads; on failure the displayed data is kept and can be refreshed. Local picks stay in browser storage, and adding one does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. ICS export and optional Google Calendar sync can include local picks and items imported from AWS Schedule. AWS may reject reservations and cancellations while the operation is closed. AWS personal-time, reservation, cancellation, and favorite writes have not been verified with a real account.
+The AWS-connected app reads the attendee's AWS Events catalog. At startup it reads reserved sessions, favorites, and personal time from AWS Schedule in the background and includes them in the My Plan Timeline / List. Favorites can also be filtered in their dedicated tab. Use **Refresh AWS schedule** to fetch them again manually; the status shows counts for AWS reservations, favorites, personal time, and local picks. This is a read from AWS into the app; it does not send local picks to AWS. You can add or remove a favorite from a session card or detail view, and submit up to 10 AWS sessions from My Plan as favorites in one reviewed batch. Favorites record interest only; they do not reserve a seat. You can create, edit, and delete AWS personal-time entries from My Plan; writes are reconciled against a fresh AWS Schedule read. UTC times are converted to venue time. Search and other actions remain usable while Schedule loads; on failure the displayed data is kept and can be refreshed. Local picks stay in browser storage, and adding one does not reserve a seat. The reservation flow submits a reviewed batch of up to 10 sessions in one request and displays each result. You can select up to 10 existing reservations from AWS Schedule to cancel; cancellation API calls are made one at a time, then Schedule is reloaded for confirmation. The ICS export picker lets you choose from local picks, AWS reservations, favorites, and personal time; it can select only AWS reservations or Walk-up Only sessions, or let you check individual items. Event titles label reservation and Walk-up Only status. If AWS Schedule has not loaded, the title says `AWS status not checked` instead of guessing. Import the downloaded file manually into your calendar; ICS export does not continuously sync changes. AWS may reject reservations and cancellations while the operation is closed. AWS personal-time, reservation, cancellation, and favorite writes have not been verified with a real account.
 
 After signing in, choose **Switch Builder ID** in the header to select a sign-out scope. **Sign out of this app only** clears the app's AWS tokens but keeps the browser's Builder ID session. **Also sign out of Builder ID** ends that browser session too, so you can sign in with a different ID.
 
 ### Local MCP for AI clients
 
-Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the AWS-connected companion server if needed. In addition to session search, AWS Schedule reads, and conflict checks, `recommend_sessions_for_gaps` ranks sessions that fit into a specified day's free time by interest, verified themes, AWS seat availability, and the cached official AWS blog feeds. RSS uses a six-hour cache. Times use the Las Vegas venue time zone. Gaps are calculated from AWS reservations and personal-time blocks. The tool reports incomplete catalog coverage and reservations whose times could not be resolved. It does not read Google Calendar or browser-only local picks. All tools remain read-only; no reservation, cancellation, or personal-time write tools are exposed.
+Run `./reinvent-explorer mcp` to start the stdio MCP server; it starts the AWS-connected companion server if needed. In addition to session search, AWS Schedule reads, and conflict checks, `recommend_sessions_for_gaps` ranks sessions that fit into a specified day's free time by interest, verified themes, AWS seat availability, and the cached official AWS blog feeds. RSS uses a six-hour cache. Times use the Las Vegas venue time zone. Gaps are calculated from AWS reservations and personal-time blocks. The tool reports incomplete catalog coverage and reservations whose times could not be resolved. It does not read external calendars or browser-only local picks. All tools remain read-only; no reservation, cancellation, or personal-time write tools are exposed.
 
 Example: call `recommend_sessions_for_gaps` with `date: "2026-12-01"` and `interests: ["ai", "genai"]` to rank candidates between 08:00 and 20:00 venue time. Override `dayStart` / `dayEnd` for another window and `perSlotLimit` for the number of suggestions per gap. Interest IDs: `ai`, `genai`, `architecture`, `serverless`, `containers`, `security`, `database`, `saas`, `developer-tools`.
 
@@ -70,21 +70,12 @@ Keep `mcp-tunnel` running while using the connection. In ChatGPT Web, add a cust
 
 The side event list combines AWS official experiences with community events listed on [Conference Parties' AWS re:Invent 2026 page](https://conferenceparties.com/reinvent2026/). Conference Parties is unofficial and is not affiliated with or endorsed by AWS. Times and capacity labels from that listing are not organizer-confirmed. Check the source links and each organizer's registration page before attending; event details and availability may change.
 
-## Google Calendar (optional)
-
-Google Calendar sync is separate from AWS reservations and is disabled until configured by the user:
-
-1. In a Google Cloud project you control, enable the Calendar API and create an OAuth client for a **Desktop app**.
-2. In the AWS-connected app, open **Google settings** and enter the client ID. It is stored in macOS Keychain.
-3. Connect your Google account, select the My Plan items to sync, review the confirmation, and submit.
-
-The app requests the `calendar.app.created` scope and manages events in a dedicated secondary calendar. Re-syncing updates mapped events. Removing an item from My Plan does not silently delete its Google event. Actual Google OAuth and API writes require your own project configuration and have not been verified in this environment.
-
 ## Data and privacy boundaries
 
+- Session filters include Walk-up Only sessions, which are marked as in-person sessions without advance reservations.
 - Preview and AWS-connected modes are selected by how the app is launched; there is no in-app data-source switch. AWS connection failures never fall back to sample data.
 - AWS credentials stay in the local app process and macOS Keychain. They are not stored in browser storage or static build files.
-- Local My Plan picks are stored in the current browser profile's local storage. The AWS-connected app reads reservations, favorites, and personal time from AWS Schedule; favorites remain separate until you add a session to My Plan. Personal-time changes are sent to AWS only after an explicit save or delete action.
+- Local My Plan picks are stored in the current browser profile's local storage. The AWS-connected app reads reservations, favorites, and personal time from AWS Schedule and shows them in My Plan; favorites record interest, not a seat reservation. Personal-time changes are sent to AWS only after an explicit save or delete action.
 - The local server binds to loopback. Do not expose it through a public tunnel or network interface.
 - ICS export creates a file for manual import; it is not continuous calendar synchronization.
 
@@ -95,7 +86,7 @@ pnpm --dir app run build
 pnpm test
 ```
 
-The frontend uses Node.js built-ins. The AWS-connected companion is in `server/` and requires Rust/Cargo. Automated tests and fixture results do not replace verification with the attendee's AWS or Google account.
+The frontend uses Node.js built-ins. The AWS-connected companion is in `server/` and requires Rust/Cargo. Automated tests and fixture results do not replace verification with the attendee's AWS account.
 
 ## License
 

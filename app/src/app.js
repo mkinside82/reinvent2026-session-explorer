@@ -7,6 +7,8 @@ import {
   getLocale,
   staticLanguageBindings,
   planSummaryLabel,
+  awsScheduleSummaryLabel,
+  stateLabel,
 } from './i18n.js';
 import {
   sessionRepository,
@@ -26,11 +28,6 @@ import {
   associateLiveFavorites,
   removeLiveFavorites,
   saveLivePersonalTime,
-  googleCalendarStatus,
-  configureGoogleCalendar,
-  connectGoogleCalendar,
-  syncGoogleCalendar,
-  removeGoogleCalendarItems,
 } from './session-data.js';
 import {
   createCatalog,
@@ -39,7 +36,7 @@ import {
   minutes,
   validInterval,
 } from './session-model.js';
-import { createCalendarIcs, calendarInstant } from './calendar-ics.js';
+import { createCalendarIcs } from './calendar-ics.js';
 import {
   getRecommendations,
   getNewsRecommendations,
@@ -107,14 +104,14 @@ const state = {
   catalogMeta: null,
   localApiAvailable: false,
   recommendationNews: { items: [], fetchedAt: null, refreshing: false, error: null },
-  googleStatus: { configured: false, connected: false, calendarReady: false, syncedItemIds: [] },
-  googleSelected: [],
-  googleResult: {},
   awsReserved: new Set(),
   awsFavorites: new Set(),
   awsPersonalTimes: [],
   awsScheduleStatus: 'idle',
   awsScheduleFetchedAt: 0,
+  icsCandidates: [],
+  icsSelection: new Set(),
+  icsSearch: '',
   reservationSelection: new Set(),
   reservationResults: null,
   reservationStage: 'select',
@@ -165,6 +162,7 @@ const FACET_LABELS = {
   venue: '会場',
   service: 'Service',
   speaker: 'Speaker',
+  walkUpOnly: 'Walk-up Only',
 };
 const byId = (id) => state.byId.get(id),
   chosen = () => sortSessions(state.plan.map(byId).filter(Boolean));
@@ -172,10 +170,43 @@ const plannerItems = () => {
   const items = new Map(chosen().map((item) => [item.id, item]));
   if (state.source === 'live') {
     for (const item of state.sessions) if (state.awsReserved.has(item.id)) items.set(item.id, item);
+    for (const item of state.sessions)
+      if (state.awsFavorites.has(item.id)) items.set(item.id, item);
     for (const item of state.awsPersonalTimes) items.set(item.id, item);
   }
   return sortSessions([...items.values()]);
 };
+function calendarExportItems() {
+  const items = new Map(plannerItems().map((item) => [item.id, item]));
+  if (state.source === 'live' && state.awsScheduleStatus === 'ready')
+    for (const item of state.sessions)
+      if (state.awsFavorites.has(item.id)) items.set(item.id, item);
+  const scheduleReady = state.source !== 'live' || state.awsScheduleStatus === 'ready';
+  return sortSessions([...items.values()]).map((item) => {
+    const reserved = scheduleReady && state.source === 'live' && state.awsReserved.has(item.id),
+      favorite = scheduleReady && state.source === 'live' && state.awsFavorites.has(item.id),
+      status =
+        item.itemType === 'personalTime'
+          ? stateLabel('Personal time')
+          : item.itemType === 'sideEvent'
+            ? t('サイドイベント')
+            : !scheduleReady
+              ? t('AWS状態未確認')
+              : reserved
+                ? t('予約済み')
+                : favorite
+                  ? t('お気に入り・未予約')
+                  : t('候補・未予約');
+    return {
+      ...item,
+      calendarReserved: reserved,
+      calendarStatus: status,
+      calendarStatusLine: `${t('状態')}: ${status}`,
+      calendarAvailability:
+        item.uiState?.availability === 'walkUp' ? t('Walk-up Only（当日参加・予約対象外）') : '',
+    };
+  });
+}
 const currentPlanKey = () =>
   state.source === 'demo'
     ? PLAN_KEY
@@ -198,21 +229,6 @@ function rememberLiveAccountId(accountId) {
   } catch {}
 }
 const livePlanKey = (accountId) => `${PLAN_KEY}:aws:reinvent2026:${accountId || 'guest'}`;
-const googleSelectionKey = () => ui`reinvent-google-selected:${currentPlanKey() || 'demo'}`;
-function readGoogleSelection() {
-  try {
-    const raw = storage.getItem(googleSelectionKey()),
-      ids = raw ? JSON.parse(raw) : [];
-    return Array.isArray(ids) ? [...new Set(ids.filter((id) => typeof id === 'string'))] : [];
-  } catch {
-    return [];
-  }
-}
-function saveGoogleSelection() {
-  try {
-    storage.setItem(googleSelectionKey(), JSON.stringify(state.googleSelected));
-  } catch {}
-}
 let controller,
   sequence = 0,
   toastTimer,
@@ -261,6 +277,44 @@ function notify(message) {
   $('#toast').hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ($('#toast').hidden = true), 2800);
+}
+async function copySessionCode(code, button) {
+  let copied = false;
+  try {
+    if (globalThis.navigator?.clipboard?.writeText) {
+      await globalThis.navigator.clipboard.writeText(code);
+      copied = true;
+    }
+  } catch {}
+  if (!copied) {
+    const field = document.createElement('textarea');
+    field.value = code;
+    field.setAttribute('readonly', '');
+    field.setAttribute('aria-hidden', 'true');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.append(field);
+    field.select();
+    try {
+      copied = document.execCommand('copy');
+    } catch {}
+    field.remove();
+  }
+  if (copied) {
+    button.classList.add('is-copied');
+    button.setAttribute('aria-label', `${t('セッションコードをコピーしました')}: ${code}`);
+    button.title = t('セッションコードをコピーしました');
+    setTimeout(() => {
+      button.classList.remove('is-copied');
+      button.setAttribute('aria-label', `${t('セッションコードをコピー')} ${code}`);
+      button.title = t('セッションコードをコピー');
+    }, 1400);
+  }
+  notify(
+    copied
+      ? `${t('セッションコードをコピーしました')}: ${code}`
+      : t('コピーに失敗しました。ブラウザーの権限を確認してください。'),
+  );
 }
 function syncURL(push = false) {
   const url = searchURL(window.location.href, {
@@ -322,6 +376,14 @@ function renderApplied() {
     chips.push(
       t(
         '<button class="filter-chip" data-remove-filter="includeUnleveled" aria-label="レベル未設定を解除">レベル未設定 <span aria-hidden="true">×</span></button>',
+      ),
+    );
+  }
+  if (state.exploreKind !== 'sideEvents' && state.filters.walkUpOnly) {
+    count++;
+    chips.push(
+      t(
+        '<button class="filter-chip" data-remove-filter="walkUpOnly" aria-label="Walk-up Onlyを解除">Walk-up Only <span aria-hidden="true">×</span></button>',
       ),
     );
   }
@@ -511,7 +573,11 @@ function renderPlan(items, map) {
     t('<option value="all">すべての日付</option><option value="unknown">日付未定</option>');
   $('#planDate').value = state.planDate;
   $('#clearPlan').disabled = !state.plan.length;
-  $('#exportCalendar').disabled = !items.some(validInterval);
+  const exportableFavorite =
+    state.source === 'live' &&
+    state.awsScheduleStatus === 'ready' &&
+    state.sessions.some((item) => state.awsFavorites.has(item.id) && validInterval(item));
+  $('#exportCalendar').disabled = !items.some(validInterval) && !exportableFavorite;
   const reservationAvailable =
     state.source === 'live' && state.localApiAvailable && !!state.accountId;
   const favoriteCandidates = chosen().filter((s) => s.dataSource === 'aws'),
@@ -527,20 +593,27 @@ function renderPlan(items, map) {
   $('#addPersonalTime').hidden = !reservationAvailable;
   $('#refreshSchedule').hidden = !reservationAvailable;
   $('#refreshSchedule').disabled = state.awsScheduleStatus === 'loading';
+  $('#refreshScheduleHelp').hidden = !reservationAvailable;
   $('#planCount').textContent = items.length;
   $('#mobilePlanCount').textContent = items.length;
   $('#navConflict').hidden = !conflicted.length;
-  const localCount = state.plan.length,
-    reservedCount = items.filter((s) => state.awsReserved.has(s.id)).length;
+  const localCount = state.plan.length;
   const scheduleStatus = $('#awsScheduleStatus');
   scheduleStatus.hidden = !reservationAvailable;
   scheduleStatus.textContent =
     state.awsScheduleStatus === 'loading'
-      ? t('AWS Scheduleをバックグラウンドで確認中です。')
+      ? t('AWS Scheduleから予約・お気に入り・個人予定を取得中です。')
       : state.awsScheduleStatus === 'error'
-        ? t('AWS Scheduleを更新できませんでした。表示中の情報は保持しています。')
+        ? t(
+            'AWSから予約・お気に入り・個人予定を取得できませんでした。表示中の情報は保持しています。',
+          )
         : state.awsScheduleStatus === 'ready'
-          ? ui`${t('AWS Scheduleと同期済み')} · ${reservedCount}${t('件予約済み')} · ${t('ローカル候補')} ${localCount}`
+          ? awsScheduleSummaryLabel({
+              reservations: state.awsReserved.size,
+              favorites: state.awsFavorites.size,
+              personalTimes: state.awsPersonalTimes.length,
+              localPicks: localCount,
+            })
           : '';
   scheduleStatus.classList.toggle('is-error', state.awsScheduleStatus === 'error');
   $('#planSummary').innerHTML =
@@ -691,7 +764,7 @@ function renderSourceInfo() {
   $('#planFootnote').textContent = live
     ? state.accountId
       ? t(
-          'AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません',
+          'AWSの予約・お気に入り・個人予定はAWSから取得 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません',
         )
       : t('候補はこのブラウザーに保存 · サインイン後にアカウント別で引き継ぎ')
     : t('候補はこのブラウザーに保存 · AWS予約とは未同期');
@@ -735,78 +808,6 @@ function renderKindSwitch() {
   $('#activeFilters').hidden = recommendationsActive;
   $('#cards').hidden = recommendationsActive;
   $('#recommendations').hidden = !recommendationsActive;
-}
-function renderGooglePanel(items) {
-  const enabled = state.localApiAvailable && state.source === 'live';
-  $('#googlePanel').hidden = !enabled;
-  $('#googleSettings').hidden = !enabled;
-  if (!enabled) return;
-  const status = state.googleStatus;
-  $('#googleConnect').hidden = !status.configured || status.connected;
-  $('#googleStatus').textContent = !status.configured
-    ? t('OAuth client IDを登録してください。')
-    : !status.connected
-      ? t('Googleアカウント未接続。Google設定から接続できます。')
-      : status.calendarReady
-        ? t('専用カレンダーに接続中')
-        : t('接続済み · 同期時に専用カレンダーを作成');
-  const candidates = new Map(
-    items
-      .filter(
-        (item) =>
-          validInterval(item) &&
-          (item.dataSource === 'aws' ||
-            item.itemType === 'sideEvent' ||
-            item.itemType === 'personalTime'),
-      )
-      .map((item) => [item.id, item]),
-  );
-  for (const id of status.syncedItemIds || []) {
-    const item = byId(id);
-    if (item && validInterval(item)) candidates.set(id, item);
-  }
-  const plannedIds = new Set(items.map((item) => item.id));
-  const validIds = new Set(
-    [...candidates.keys()].filter(
-      (id) => plannedIds.has(id) || (status.syncedItemIds || []).includes(id),
-    ),
-  );
-  const oldSelection = state.googleSelected;
-  state.googleSelected = state.googleSelected.filter((id) => validIds.has(id));
-  if (oldSelection.length !== state.googleSelected.length) saveGoogleSelection();
-  $('#googleEventChoices').innerHTML = candidates.size
-    ? [...candidates.values()]
-        .map(
-          (item) =>
-            ui`<div class="google-choice"><label><input type="checkbox" data-google-select="${esc(item.id)}" ${state.googleSelected.includes(item.id) ? 'checked' : ''} ${plannedIds.has(item.id) ? '' : 'disabled'}><span class="google-choice-title">${esc(item.title)}<small>${esc(dateLabel(item.date))} · ${esc(timeLabel(item))}${plannedIds.has(item.id) ? '' : t(' · Planから削除済み')}</small></span></label>${status.syncedItemIds?.includes(item.id) ? '<button class="quiet small" data-google-remove="' + esc(item.id) + t('">Googleから削除</button>') : ''}</div>`,
-        )
-        .join('')
-    : t('<p class="hint">日時の確定したPlan項目がありません。</p>');
-  const selectedCount = state.googleSelected.filter((id) => plannedIds.has(id)).length;
-  $('#googleSync').textContent = ui`選択した予定を同期（${selectedCount}件）`;
-  $('#googleSync').disabled = !status.connected || selectedCount === 0;
-}
-function updateGoogleSelectionUI() {
-  const plannedIds = new Set(plannerItems().map((item) => item.id)),
-    selectedCount = state.googleSelected.filter((id) => plannedIds.has(id)).length;
-  $('#googleSync').textContent = ui`選択した予定を同期（${selectedCount}件）`;
-  $('#googleSync').disabled = !state.googleStatus.connected || selectedCount === 0;
-}
-function renderGoogleResults() {
-  const errors = Object.entries(state.googleResult).filter(([, reason]) => reason);
-  const labels = {
-    GOOGLE_REAUTH_REQUIRED: t('Googleへ再接続してください'),
-    GOOGLE_RATE_LIMITED: t('Google側で一時的な上限に達しました'),
-    GOOGLE_PERMISSION_OR_QUOTA_ERROR: t('権限またはAPI上限を確認してください'),
-    GOOGLE_NETWORK_ERROR: t('通信を確認して再試行してください'),
-    KEYCHAIN_UNAVAILABLE: t('Keychainへ対応情報を保存できませんでした'),
-  };
-  $('#googleSyncResults').innerHTML = errors
-    .map(
-      ([id, reason]) =>
-        ui`<p role="status">${esc(byId(id)?.title || id)} · ${esc(labels[reason] || t('同期に失敗しました。選択を保って再試行できます'))}</p>`,
-    )
-    .join('');
 }
 function reservationCandidates() {
   return chosen().filter((item) => item.dataSource === 'aws');
@@ -859,7 +860,7 @@ function renderFavoriteDialog() {
     return;
   }
   if (state.favoriteStage === 'confirm') {
-    body.innerHTML = ui`<p class="reservation-warning">${t('選択したセッションをAWSお気に入りに登録します。予約は行いません。')}</p><ul class="google-sync-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`).join('')}</ul>`;
+    body.innerHTML = ui`<p class="reservation-warning">${t('選択したセッションをAWSお気に入りに登録します。予約は行いません。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`).join('')}</ul>`;
     $('#favoriteIntro').textContent = t('登録対象を確認してください。');
     next.textContent = t('この内容でAWSへ登録');
     next.hidden = false;
@@ -1085,7 +1086,7 @@ function renderReservationDialog() {
       next.hidden = true;
       back.textContent = t('閉じる');
     } else if (state.reservationStage === 'confirm') {
-      body.innerHTML = ui`<p class="reservation-warning">${t('選択した予約をAWSから1件ずつ解除します。この操作はMy Planの候補を削除しません。')}</p><ul class="google-sync-preview">${selectedIds
+      body.innerHTML = ui`<p class="reservation-warning">${t('選択した予約をAWSから1件ずつ解除します。この操作はMy Planの候補を削除しません。')}</p><ul class="action-preview">${selectedIds
         .map((id) => {
           const item = byId(id);
           return ui`<li>${esc(item?.title || id)} · ${esc(item?.code || id)}</li>`;
@@ -1153,7 +1154,7 @@ function renderReservationDialog() {
     next.hidden = true;
     back.textContent = t('閉じる');
   } else if (state.reservationStage === 'confirm') {
-    body.innerHTML = ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="google-sync-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}${conflicts.get(item.id)?.length ? ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>` : ''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;
+    body.innerHTML = ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}${conflicts.get(item.id)?.length ? ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>` : ''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;
     next.textContent = t('この内容でAWSへ送信');
     next.hidden = false;
     back.textContent = t('選択へ戻る');
@@ -1312,13 +1313,12 @@ function render() {
   renderTray();
   renderExplore(map);
   renderPlan(items, map);
-  renderGooglePanel(items);
-  renderGoogleResults();
   if (state.exploreView === 'recommendations') renderRecommendationsPanel(items);
   renderNavigation();
   renderSourceInfo();
   $('#storageWarning').hidden = !state.warning;
   $('#storageWarning').textContent = t(state.warning);
+  if ($('#icsExportDialog').open) refreshIcsExportDialog();
 }
 function renderRecommendationsPanel(items = plannerItems()) {
   const root = $('#recommendations');
@@ -1685,6 +1685,10 @@ function openFilters({ preserveDraft = false } = {}) {
   )
     .map(renderFacet)
     .join('');
+  if (!sideMode) {
+    const walkupFilter = ui`<fieldset class="facet-group walkup-filter"><legend>${t('参加方法')}</legend><label class="facet-option"><input id="walkUpOnlyFilter" type="checkbox" ${state.draft.walkUpOnly ? 'checked' : ''}><span>${t('Walk-up Only（当日参加のみ）')}</span></label><p class="hint">${t('事前予約なしで現地参加するセッションに絞り込みます。')}</p></fieldset>`;
+    $('#facetFields').innerHTML = walkupFilter + $('#facetFields').innerHTML;
+  }
   $('#from').value = preserveDraft ? draftFrom : state.filters.from;
   $('#to').value = preserveDraft ? draftTo : state.filters.to;
   $('#fitContained').checked = preserveDraft ? draftFit : state.filters.fit === 'contained';
@@ -1853,8 +1857,6 @@ function switchSource(source, accountId = state.accountId) {
     const plan = nextKey ? readPlan(storage, nextKey) : { ids: [], warning: '' };
     state.plan = plan.ids;
     state.warning = plan.warning;
-    state.googleSelected = readGoogleSelection();
-    state.googleResult = {};
   }
   state.planDate = '';
   load();
@@ -1896,17 +1898,6 @@ async function initialize() {
         state.plan = [...new Set([...state.plan, ...localPlan.ids])];
         state.warning ||= localPlan.warning;
       }
-      state.googleSelected = readGoogleSelection();
-      try {
-        state.googleStatus = await googleCalendarStatus();
-      } catch {
-        state.googleStatus = {
-          configured: false,
-          connected: false,
-          calendarReady: false,
-          syncedItemIds: [],
-        };
-      }
     } catch {
       state.localApiAvailable = false;
     }
@@ -1927,145 +1918,6 @@ async function beginSignIn() {
     notify(t('サインインを開始できませんでした。Local serverの状態を確認してください。'));
   }
 }
-async function refreshGoogleStatus() {
-  if (!state.localApiAvailable) return;
-  try {
-    state.googleStatus = await googleCalendarStatus();
-  } catch {
-    state.googleStatus = {
-      configured: false,
-      connected: false,
-      calendarReady: false,
-      syncedItemIds: [],
-    };
-  }
-  render();
-}
-async function saveGoogleClient() {
-  const button = $('#saveGoogleClient'),
-    clientId = $('#googleClientId').value.trim();
-  button.disabled = true;
-  try {
-    await configureGoogleCalendar(clientId);
-    $('#googleSetupDialog').close();
-    notify(t('Google OAuth client IDをKeychainへ保存しました'));
-    await refreshGoogleStatus();
-  } catch (error) {
-    notify(
-      error.message === 'GOOGLE_DISCONNECT_BEFORE_RECONFIGURE'
-        ? t('接続中のGoogleアカウントがあるため、再設定できません。')
-        : t('client IDを保存できませんでした。形式とKeychainを確認してください。'),
-    );
-  } finally {
-    button.disabled = false;
-  }
-}
-async function beginGoogleConnect() {
-  try {
-    await connectGoogleCalendar();
-    notify(t('Googleの同意画面を既定のブラウザーで開きました'));
-  } catch (error) {
-    notify(
-      error.message === 'GOOGLE_CLIENT_ID_REQUIRED'
-        ? t('先にGoogle OAuth client IDを設定してください。')
-        : t('Google接続を開始できませんでした。'),
-    );
-  }
-}
-function openGoogleSyncConfirmation() {
-  const selected = plannerItems().filter(
-    (item) => state.googleSelected.includes(item.id) && validInterval(item),
-  );
-  if (!selected.length) {
-    notify(t('日時が確定した候補を選択してください。'));
-    return;
-  }
-  $('#googleSyncPreview').innerHTML = selected
-    .map(
-      (item) =>
-        ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(timeLabel(item))}</li>`,
-    )
-    .join('');
-  openDialog('googleSyncDialog');
-}
-async function confirmGoogleSync() {
-  const button = $('#confirmGoogleSync'),
-    items = plannerItems().filter(
-      (item) => state.googleSelected.includes(item.id) && validInterval(item),
-    );
-  if (!items.length) return;
-  button.disabled = true;
-  try {
-    const payload = items.map((item) => ({
-      itemId: item.id,
-      title: item.title,
-      description: [item.abstract, item.code ? ui`Session: ${item.code}` : '', item.sourceUrl || '']
-        .filter(Boolean)
-        .join('\n'),
-      location: [item.venue, item.room].filter(Boolean).join(' · '),
-      start: calendarInstant(item.date, item.startTime),
-      end: calendarInstant(item.endDate || item.date, item.endTime),
-    }));
-    if (payload.some((item) => !item.start || !item.end)) throw new Error('TIME_UNAVAILABLE');
-    const result = await syncGoogleCalendar(payload);
-    for (const row of result.results || []) {
-      if (row.status === 'failed')
-        state.googleResult[row.itemId] = row.error || 'GOOGLE_SYNC_FAILED';
-      else delete state.googleResult[row.itemId];
-    }
-    renderGoogleResults();
-    $('#googleSyncDialog').close();
-    await refreshGoogleStatus();
-    notify(
-      ui`${result.synced}件を同期しました${result.failed ? ui` · ${result.failed}件は失敗。選択を保ったまま再試行できます` : ''}`,
-    );
-  } catch (error) {
-    notify(
-      error.message === 'TIME_UNAVAILABLE'
-        ? t(
-            '会場時刻を変換できない予定があります。Googleへ同期できません。認証・通信・Calendar API設定を確認してください。',
-          )
-        : t(
-            'Google Calendarへ同期できませんでした。認証・通信・Calendar API設定を確認してください。',
-          ),
-    );
-  } finally {
-    button.disabled = false;
-  }
-}
-function openGoogleRemoveConfirmation(id) {
-  const item = byId(id);
-  if (!item || !state.googleStatus.syncedItemIds?.includes(id)) return;
-  state.pendingGoogleRemove = id;
-  $('#googleRemovePreview').innerHTML =
-    ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(timeLabel(item))}</li>`;
-  openDialog('googleRemoveDialog');
-}
-async function confirmGoogleRemove() {
-  const button = $('#confirmGoogleRemove'),
-    id = state.pendingGoogleRemove;
-  if (!id) return;
-  button.disabled = true;
-  try {
-    const result = await removeGoogleCalendarItems([id]);
-    if (result.results?.[0]?.status === 'removed') delete state.googleResult[id];
-    else if (result.results?.[0]?.status === 'failed')
-      state.googleResult[id] = result.results[0].error || 'GOOGLE_DELETE_FAILED';
-    renderGoogleResults();
-    $('#googleRemoveDialog').close();
-    await refreshGoogleStatus();
-    notify(
-      result.removed
-        ? t('Google Calendarから同期予定を削除しました')
-        : t('Google Calendar予定を削除できませんでした。再試行してください。'),
-    );
-  } catch {
-    notify(t('Google Calendarから削除できませんでした。認証・通信状態を確認してください。'));
-  } finally {
-    button.disabled = false;
-    state.pendingGoogleRemove = null;
-  }
-}
 function clearSignedInAccount() {
   controller?.abort();
   sequence++;
@@ -2074,8 +1926,6 @@ function clearSignedInAccount() {
   state.accountId = '';
   state.plan = [];
   state.warning = '';
-  state.googleSelected = [];
-  state.googleResult = {};
   state.awsReserved = new Set();
   state.awsFavorites = new Set();
   state.favoriteUnknown.clear();
@@ -2156,10 +2006,9 @@ $('#languageSwitch').addEventListener('change', () => {
       conflictMap(plannerItems()),
     );
   if ($('#filterDialog').open) openFilters({ preserveDraft: true });
-  if ($('#googleSyncDialog').open) openGoogleSyncConfirmation();
-  if ($('#googleRemoveDialog').open) openGoogleRemoveConfirmation(state.pendingGoogleRemove);
   if ($('#reservationDialog').open) renderReservationDialog();
   if ($('#favoriteDialog').open) renderFavoriteDialog();
+  if ($('#icsExportDialog').open) refreshIcsExportDialog();
   $('#toast').hidden = true;
 });
 $('#showSessionItems').addEventListener('click', () => setExploreKind('sessions'));
@@ -2179,7 +2028,6 @@ $('#refreshLive').addEventListener('click', refreshLive);
 $('#signOut').addEventListener('click', openAwsSignOut);
 $('#signOutAppOnly').addEventListener('click', signOutAppOnly);
 $('#switchBuilderId').addEventListener('click', switchBuilderId);
-$('#googleSettings').addEventListener('click', () => openDialog('googleSetupDialog'));
 $('#reservePlanned').addEventListener('click', openReservationDialog);
 $('#favoritePlanned').addEventListener('click', openFavoriteDialog);
 $('#manageReservations').addEventListener('click', () => openReservationDialog('cancel'));
@@ -2223,11 +2071,6 @@ $('#favoriteBack').addEventListener('click', (event) => {
     $('#favoriteDialog').close();
   }
 });
-$('#googleConnect').addEventListener('click', beginGoogleConnect);
-$('#googleSync').addEventListener('click', openGoogleSyncConfirmation);
-$('#saveGoogleClient').addEventListener('click', saveGoogleClient);
-$('#confirmGoogleSync').addEventListener('click', confirmGoogleSync);
-$('#confirmGoogleRemove').addEventListener('click', confirmGoogleRemove);
 document.addEventListener('change', (event) => {
   const favoriteId = event.target.dataset?.favoriteSelect;
   if (favoriteId) {
@@ -2253,24 +2096,6 @@ document.addEventListener('change', (event) => {
     renderReservationDialog();
     return;
   }
-  const id = event.target.dataset?.googleSelect;
-  if (!id) return;
-  const planIds = new Set(plannerItems().map((item) => item.id)),
-    activeSelection = state.googleSelected.filter((value) => planIds.has(value));
-  if (event.target.checked && activeSelection.length >= 50) {
-    event.target.checked = false;
-    notify(t('一度に同期できる予定は50件までです'));
-    return;
-  }
-  state.googleSelected = event.target.checked
-    ? [...new Set([...state.googleSelected, id])]
-    : state.googleSelected.filter((value) => value !== id);
-  saveGoogleSelection();
-  updateGoogleSelectionUI();
-});
-$('#googleEventChoices').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-google-remove]');
-  if (button && !button.disabled) openGoogleRemoveConfirmation(button.dataset.googleRemove);
 });
 $('#q').addEventListener('input', () => {
   state.filters.query = $('#q').value;
@@ -2299,6 +2124,7 @@ $('#filterForm').addEventListener('submit', (event) => {
     from,
     to,
     fit: $('#fitContained').checked ? 'contained' : 'overlap',
+    walkUpOnly: $('#walkUpOnlyFilter')?.checked === true,
   };
   commitSearch();
   $('#filterDialog').close();
@@ -2350,9 +2176,62 @@ for (const [id, value] of [
         chosen().find((s) => s.date)?.date || state.sessions.find((s) => s.date)?.date || '';
     render();
   });
+function refreshIcsExportDialog() {
+  const selectedIds = state.icsSelection;
+  state.icsCandidates = calendarExportItems();
+  state.icsSelection = new Set(
+    [...selectedIds].filter((id) => state.icsCandidates.some((item) => item.id === id)),
+  );
+  const query = state.icsSearch.trim().toLocaleLowerCase(),
+    visible = state.icsCandidates.filter((item) =>
+      [item.title, item.code, item.calendarStatus, item.calendarAvailability, 'Walk-up Only']
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(query),
+    ),
+    exportable = state.icsCandidates.filter(validInterval),
+    selectedCount = [...state.icsSelection].filter((id) =>
+      exportable.some((item) => item.id === id),
+    ).length;
+  $('#icsExportCount').textContent =
+    getLanguage() === 'en'
+      ? `${selectedCount} selected · ${exportable.length} exportable · ${state.icsCandidates.length - exportable.length} without confirmed time`
+      : `${selectedCount}件選択中 · 出力可能 ${exportable.length}件 · 日時未確定 ${state.icsCandidates.length - exportable.length}件`;
+  $('#confirmIcsExport').disabled = selectedCount === 0;
+  $('#selectReservedIcs').disabled =
+    state.source !== 'live' ||
+    state.awsScheduleStatus !== 'ready' ||
+    !exportable.some((item) => item.calendarReserved);
+  $('#selectWalkupIcs').disabled = !exportable.some(
+    (item) => item.uiState?.availability === 'walkUp',
+  );
+  $('#icsExportList').innerHTML = visible.length
+    ? visible
+        .map((item) => {
+          const canExport = validInterval(item),
+            checked = state.icsSelection.has(item.id),
+            dateTime = canExport
+              ? `${dateLabel(item.date)} ${timeLabel(item, item.date)}`
+              : t('日時未定 · ICS出力対象外');
+          return ui`<label class="ics-export-option ${canExport ? '' : 'is-disabled'}"><input type="checkbox" data-ics-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${canExport ? '' : 'disabled'}><span><strong>${esc(item.title)}</strong><small>${esc(item.code || '')}${item.code ? ' · ' : ''}${esc(dateTime)}</small><small>${esc(item.calendarStatus)}${item.calendarAvailability ? ui` · <span class="walkup-label">${esc(item.calendarAvailability)}</span>` : ''}</small></span></label>`;
+        })
+        .join('')
+    : `<p class="ics-export-empty">${t('検索に一致する予定はありません。')}</p>`;
+}
+function openIcsExportDialog() {
+  state.icsSearch = '';
+  $('#icsExportSearch').value = '';
+  state.icsCandidates = calendarExportItems();
+  state.icsSelection = new Set(state.icsCandidates.filter(validInterval).map((item) => item.id));
+  refreshIcsExportDialog();
+  openDialog('icsExportDialog');
+}
 function downloadPlanIcs() {
-  const items = plannerItems(),
-    result = createCalendarIcs(items);
+  const selected = state.icsCandidates.filter(
+    (item) => state.icsSelection.has(item.id) && validInterval(item),
+  );
+  const result = createCalendarIcs(selected);
   if (!result.exported) {
     notify(t('日時が確定した候補がないため、ICSを書き出せません。'));
     return;
@@ -2367,11 +2246,46 @@ function downloadPlanIcs() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  notify(
-    ui`${result.exported}件を書き出しました${result.skipped ? ui` · 日時未定の${result.skipped}件は対象外です` : ''}`,
-  );
+  $('#icsExportDialog').close();
+  notify(ui`${result.exported}件を書き出しました`);
 }
-$('#exportCalendar').addEventListener('click', downloadPlanIcs);
+$('#exportCalendar').addEventListener('click', openIcsExportDialog);
+$('#icsExportSearch').addEventListener('input', () => {
+  state.icsSearch = $('#icsExportSearch').value;
+  refreshIcsExportDialog();
+});
+$('#selectReservedIcs').addEventListener('click', () => {
+  state.icsSelection = new Set(
+    state.icsCandidates
+      .filter((item) => item.calendarReserved && validInterval(item))
+      .map((item) => item.id),
+  );
+  refreshIcsExportDialog();
+});
+$('#selectWalkupIcs').addEventListener('click', () => {
+  state.icsSelection = new Set(
+    state.icsCandidates
+      .filter((item) => item.uiState?.availability === 'walkUp' && validInterval(item))
+      .map((item) => item.id),
+  );
+  refreshIcsExportDialog();
+});
+$('#selectAllIcs').addEventListener('click', () => {
+  state.icsSelection = new Set(state.icsCandidates.filter(validInterval).map((item) => item.id));
+  refreshIcsExportDialog();
+});
+$('#clearIcsSelection').addEventListener('click', () => {
+  state.icsSelection.clear();
+  refreshIcsExportDialog();
+});
+$('#confirmIcsExport').addEventListener('click', downloadPlanIcs);
+$('#icsExportList').addEventListener('change', (event) => {
+  const checkbox = event.target.closest('[data-ics-select]');
+  if (!checkbox) return;
+  if (checkbox.checked) state.icsSelection.add(checkbox.dataset.icsSelect);
+  else state.icsSelection.delete(checkbox.dataset.icsSelect);
+  refreshIcsExportDialog();
+});
 $('#clearPlan').addEventListener('click', () => openDialog('clearDialog'));
 $('#confirmClear').addEventListener('click', () => {
   state.plan = [];
@@ -2387,6 +2301,7 @@ for (const id of [
   'clearDialog',
   'reservationDialog',
   'favoriteDialog',
+  'icsExportDialog',
 ])
   $('#' + id).addEventListener('click', (event) => {
     if (event.target === $('#' + id)) {
@@ -2418,6 +2333,12 @@ document.addEventListener('click', (event) => {
   if (button) {
     if (button.disabled) return;
     const d = button.dataset;
+    if (d.copyCode) {
+      event.preventDefault();
+      event.stopPropagation();
+      void copySessionCode(d.copyCode, button);
+      return;
+    }
     if (d.close) {
       $('#' + d.close).close();
       return;
@@ -2477,6 +2398,8 @@ document.addEventListener('click', (event) => {
         state.filters.levelDefaultSuppressed = true;
       } else if (d.removeFilter === 'includeUnleveled') {
         state.filters.includeUnleveled = false;
+      } else if (d.removeFilter === 'walkUpOnly') {
+        state.filters.walkUpOnly = false;
       } else
         state.filters[d.removeFilter] = state.filters[d.removeFilter].filter(
           (v) => v !== d.filterValue,
@@ -2677,6 +2600,5 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     render();
     void refreshAwsSchedule();
-    refreshGoogleStatus();
   }
 });

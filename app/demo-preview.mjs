@@ -55,7 +55,7 @@ server.on('error', (error) => {
 server.listen(Number(process.env.PORT) || 0, '127.0.0.1', () => {
   const address = server.address();
   console.log(`Demo preview: http://127.0.0.1:${address.port}/`);
-  console.log('Demo only · no AWS or Google sign-in/API server');
+  console.log('Preview only · no AWS sign-in/API server');
 });
 for (const signal of ['SIGINT', 'SIGTERM'])
   process.on(signal, () => server.close(() => process.exit(0)));

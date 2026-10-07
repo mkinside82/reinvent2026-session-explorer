@@ -22,6 +22,10 @@ export const planSummaryLabel = (items, days) =>
   language === 'en'
     ? `${items} planned item${items === 1 ? '' : 's'} · ${days} day${days === 1 ? '' : 's'}`
     : `${items}件の参加候補 · ${days}日間`;
+export const awsScheduleSummaryLabel = ({ reservations, favorites, personalTimes, localPicks }) =>
+  language === 'en'
+    ? `AWS data loaded · ${reservations} reserved · ${favorites} favorites · ${personalTimes} personal times · ${localPicks} local picks`
+    : `AWSから取得済み · 予約済み ${reservations}件 · お気に入り ${favorites}件 · 個人予定 ${personalTimes}件 · ローカル候補 ${localPicks}件`;
 export function setLanguage(value, storage) {
   if (!['ja', 'en'].includes(value)) return false;
   language = value;
@@ -31,18 +35,20 @@ export function setLanguage(value, storage) {
   return true;
 }
 const english = Object.freeze({
-  'AWS Scheduleを更新': 'Refresh AWS Schedule',
-  'AWS Scheduleをバックグラウンドで確認中です。': 'Checking AWS Schedule in the background.',
+  AWSの予定を再取得: 'Refresh AWS schedule',
+  'AWSの予約・お気に入り・個人予定を読み込み、My Planに反映します。起動時にも自動取得します。ローカル候補はAWSへ送信しません。':
+    'Reload reservations, favorites, and personal time from AWS into My Plan. This also happens automatically at startup. Local picks are not sent to AWS.',
+  'AWS Scheduleから予約・お気に入り・個人予定を取得中です。':
+    'Loading reservations, favorites, and personal time from AWS Schedule.',
+  'AWSから予約・お気に入り・個人予定を取得できませんでした。表示中の情報は保持しています。':
+    'Could not load reservations, favorites, and personal time from AWS. Keeping the currently displayed information.',
   'AWS Scheduleを更新できませんでした。表示中の情報は保持しています。':
     'Could not refresh AWS Schedule. Keeping the currently displayed information.',
-  'AWS Scheduleと同期済み': 'AWS Schedule synced',
-  件予約済み: ' reserved',
-  ローカル候補: 'local picks',
   'AWS Scheduleを確認しています': 'Loading AWS Schedule',
   'セッション検索と他の操作はそのまま利用できます。':
     'Session search and other actions remain available.',
-  'AWS予約はScheduleから同期 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません':
-    'AWS reservations sync from Schedule · local picks stay in this browser for this account · removing a pick does not cancel an AWS reservation',
+  'AWSの予約・お気に入り・個人予定はAWSから取得 · 候補はこのアカウントのブラウザーに保存 · 候補を外してもAWS予約は解除されません':
+    'Reservations, favorites, and personal time load from AWS · local picks stay in this browser · removing a pick does not cancel an AWS reservation',
   '候補はこのブラウザーに保存 · AWS予約とは未同期':
     'Picks are stored in this browser · not synced with AWS reservations',
   '候補はこのブラウザーに保存 · サインイン後にアカウント別で引き継ぎ':
@@ -106,6 +112,36 @@ const english = Object.freeze({
   'AWS応答は成功・Schedule未確認': 'AWS accepted the request; Schedule not confirmed',
   予約できませんでした: 'Reservation failed',
   予約済み: 'Reserved',
+  AWS状態未確認: 'AWS status not checked',
+  'お気に入り・未予約': 'Favorite · not reserved',
+  '候補・未予約': 'Plan pick · not reserved',
+  ICSに出力する予定を選択: 'Choose items to export to ICS',
+  'My Plan・AWS予約・AWSお気に入りから選択できます。Walk-up Onlyは予約対象外の当日参加枠です。My Planに追加して選択できます。':
+    'Choose from My Plan, AWS reservations, and AWS favorites. Walk-up Only sessions are in-person and cannot be reserved; add them to My Plan, then select them here.',
+  ICS出力対象: 'ICS export selection',
+  AWS予約済みだけを選択: 'Select AWS reserved only',
+  'Walk-up Onlyだけを選択': 'Select Walk-up Only',
+  出力可能な予定をすべて選択: 'Select all exportable items',
+  選択を解除: 'Clear selection',
+  ICS出力候補を検索: 'Search ICS export candidates',
+  セッション名・コードで検索: 'Search by session title or code',
+  選択した予定を書き出す: 'Export selected items',
+  'Walk-up Only（当日参加・予約対象外）': 'Walk-up Only (in-person, no reservation)',
+  'Walk-up Onlyです。事前予約できず、現地で当日参加するセッションです。':
+    'Walk-up Only: advance reservations are unavailable; attend in person on the day.',
+  参加方法: 'Attendance type',
+  'Walk-up Only（当日参加のみ）': 'Walk-up Only',
+  '事前予約不可 · 当日会場で参加': 'No advance reservation · attend in person on the day',
+  セッションコード: 'Session code',
+  セッションコードをコピー: 'Copy session code',
+  セッションコードをコピーしました: 'Copied session code',
+  'コピーに失敗しました。ブラウザーの権限を確認してください。':
+    'Could not copy. Check your browser permissions.',
+  '、Walk-up Only・事前予約不可': ', Walk-up Only · no advance reservation',
+  '事前予約なしで現地参加するセッションに絞り込みます。':
+    'Show sessions that can only be attended in person without an advance reservation.',
+  '日時未定 · ICS出力対象外': 'Time TBD · not exportable to ICS',
+  '検索に一致する予定はありません。': 'No items match your search.',
   'AWS Scheduleに予約済み': 'Already reserved in AWS Schedule',
   'AWS Scheduleに予約済みのセッションがあります。Scheduleを更新してください。':
     'One or more sessions are already reserved. Refresh AWS Schedule.',
@@ -241,18 +277,10 @@ const english = Object.freeze({
   'セッションを読み込んでいます…': 'Loading sessions…',
   読み込み中: 'Loading',
   ICSを書き出し: 'Export ICS',
-  Google設定: 'Google settings',
   すべて削除: 'Clear all',
-  未連携: 'Not connected',
-  Googleに接続: 'Connect Google',
-  選択した予定を同期: 'Sync selected events',
-  '専用カレンダーに予定を追加・更新します。My Planへの追加だけでは予約されません。Google同期から外す操作は対象の予定だけを削除します。':
-    'Adds or updates events in a dedicated calendar. Adding to My Plan does not reserve a seat. Removing a Google event deletes only that mapped event.',
   'My Planの日付': 'My Plan date',
   'My Planの表示形式': 'My Plan view',
   今日: 'Today',
-  'このブラウザーに保存 · 手動ICS書き出しのみ · AWS/Googleとは未同期':
-    'Saved in this browser · Manual ICS export · No AWS/Google synchronization',
   Filterを閉じる: 'Close filters',
   '同じ項目内はOR、異なる項目間はANDで絞り込みます。':
     'Values within a field use OR; different fields use AND.',
@@ -269,19 +297,6 @@ const english = Object.freeze({
   キャンセル: 'Cancel',
   閉じる: 'Close',
   保存: 'Save',
-  'Google Calendarを設定': 'Set up Google Calendar',
-  'Google CloudでCalendar APIを有効にし、OAuthクライアントの種類を「デスクトップアプリ」に設定してください。client IDはこのMacのKeychainに保存します。client secretは使いません。':
-    'Enable Calendar API in Google Cloud and create a Desktop app OAuth client. The client ID is saved in this Mac’s Keychain. A client secret is not used.',
-  'Google Calendar APIを有効にする': 'Enable Google Calendar API',
-  'OAuth clientを作成する': 'Create an OAuth client',
-  'Google Calendarへ同期しますか？': 'Sync to Google Calendar?',
-  '次の予定だけを専用カレンダーへ追加または更新します。':
-    'Adds or updates only these events in the dedicated calendar.',
-  '追加・更新する': 'Add or update',
-  'Google Calendarから削除しますか？': 'Remove from Google Calendar?',
-  'アプリが作成した対応予定だけを専用カレンダーから削除します。':
-    'Deletes only the mapped event created by this app from the dedicated calendar.',
-  予定を削除する: 'Remove event',
   'JavaScriptを有効にしてください。': 'Please enable JavaScript.',
   'セッションを検索・比較し、Day Plannerで参加候補と空き時間を整理するre:Invent 2026のプレビュー用プランナー。':
     'A re:Invent 2026 preview planner for searching and comparing sessions, and organizing planned items and free time in Day Planner.',
@@ -361,22 +376,6 @@ const english = Object.freeze({
   'このアカウントのLocal Plan · AWS Scheduleとは別':
     'Local Plan for this account · Separate from AWS Schedule',
   'このブラウザーに保存 · AWSとは未同期': 'Saved in this browser · Not synchronized with AWS',
-  'OAuth client IDを登録してください。': 'Set your OAuth client ID.',
-  'Googleアカウント未接続。Google設定から接続できます。':
-    'Google account not connected. Connect from Google settings.',
-  専用カレンダーに接続中: 'Dedicated calendar connected',
-  '接続済み · 同期時に専用カレンダーを作成':
-    'Connected · A dedicated calendar will be created when syncing',
-  ' · Planから削除済み': ' · Removed from Plan',
-  Googleから削除: 'Remove from Google',
-  '日時の確定したPlan項目がありません。': 'No Plan items with confirmed times.',
-  Googleへ再接続してください: 'Reconnect to Google',
-  Google側で一時的な上限に達しました: 'Google’s temporary rate limit was reached',
-  権限またはAPI上限を確認してください: 'Check permissions or API quota',
-  通信を確認して再試行してください: 'Check your connection and retry',
-  Keychainへ対応情報を保存できませんでした: 'Could not save the event mapping in Keychain',
-  '同期に失敗しました。選択を保って再試行できます':
-    'Sync failed. Selection is retained so you can retry',
   'サインイン後にアカウント別のLocal Planへ保存できます。':
     'Sign in to save a separate Local Plan for your account.',
   'My Planに追加しました（予約ではありません）': 'Added to My Plan (no seat reservation)',
@@ -391,27 +390,6 @@ const english = Object.freeze({
   を検索: ' search',
   'サインインを開始できませんでした。Local serverの状態を確認してください。':
     'Could not start sign-in. Check the local server.',
-  'Google OAuth client IDをKeychainへ保存しました': 'Google OAuth client ID saved in Keychain',
-  '接続中のGoogleアカウントがあるため、再設定できません。':
-    'Cannot change configuration while a Google account is connected.',
-  'client IDを保存できませんでした。形式とKeychainを確認してください。':
-    'Could not save the client ID. Check its format and Keychain access.',
-  Googleの同意画面を既定のブラウザーで開きました: 'Google consent opened in your default browser',
-  '先にGoogle OAuth client IDを設定してください。': 'Set your Google OAuth client ID first.',
-  'Google接続を開始できませんでした。': 'Could not start Google connection.',
-  '日時が確定した候補を選択してください。': 'Select items with confirmed times.',
-  件を同期しました: ' events synced',
-  '件は失敗。選択を保ったまま再試行できます':
-    ' events failed. Selection is retained so you can retry',
-  '会場時刻を変換できない予定があります。Googleへ同期できません。認証・通信・Calendar API設定を確認してください。':
-    'Some venue times could not be converted. Check the event times, connection, and Calendar API settings before syncing.',
-  'Google Calendarへ同期できませんでした。認証・通信・Calendar API設定を確認してください。':
-    'Could not sync to Google Calendar. Check authorization, connection, and Calendar API settings.',
-  'Google Calendarから同期予定を削除しました': 'Synced event removed from Google Calendar',
-  'Google Calendar予定を削除できませんでした。再試行してください。':
-    'Could not remove the Google Calendar event. Please retry.',
-  'Google Calendarから削除できませんでした。認証・通信状態を確認してください。':
-    'Could not remove the Google Calendar event. Check authorization and connection.',
   'AWSからサインアウトできませんでした。KeychainとLocal serverの状態を確認してください。':
     'Could not sign out of AWS. Check Keychain and the local server.',
   'Builder IDを切り替え': 'Switch Builder ID',
@@ -634,7 +612,7 @@ const stateLabels = Object.freeze({
   Available: '空席あり',
   Limited: '空席少なめ',
   'Very limited': '残りわずか',
-  'Walk-up': '当日参加',
+  'Walk-up': 'Walk-up Only',
   Reserved: '予約済み',
   Favorite: 'AWSお気に入り',
   'Personal time': '個人予定',
@@ -642,7 +620,8 @@ const stateLabels = Object.freeze({
   Waitlist: 'キャンセル待ち',
   Conflict: '時間重複',
 });
-export const stateLabel = (value) => (language === 'ja' ? stateLabels[value] || value : value);
+export const stateLabel = (value) =>
+  language === 'ja' ? stateLabels[value] || value : value === 'Walk-up' ? 'Walk-up Only' : value;
 const replacements = Object.entries(english).sort((a, b) => b[0].length - a[0].length);
 // Template fragments contain application copy and markup; interpolated source
 // values are never processed by the translator.

@@ -407,18 +407,3 @@ export async function cancelLiveReservations(sessionIds) {
 export async function saveLivePersonalTime(input) {
   return apiRequest('/api/live/personal-time', { method: 'POST', body: input });
 }
-export async function googleCalendarStatus() {
-  return apiRequest('/api/google/status');
-}
-export async function configureGoogleCalendar(clientId) {
-  return apiRequest('/api/google/configure', { method: 'POST', body: { clientId } });
-}
-export async function connectGoogleCalendar() {
-  return apiRequest('/api/google/connect', { method: 'POST', body: {} });
-}
-export async function syncGoogleCalendar(items) {
-  return apiRequest('/api/google/sync', { method: 'POST', body: { items } });
-}
-export async function removeGoogleCalendarItems(itemIds) {
-  return apiRequest('/api/google/remove', { method: 'POST', body: { itemIds } });
-}
