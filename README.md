@@ -84,7 +84,7 @@ Node.jsのパッケージ管理にはpnpmを使います。`pnpm install`で開�
 
 - 実際のAWSセッションカタログをページ末尾まで取得し、タイトル・概要・コード・登壇者・トピックなどを検索
 - Level 200以上、日付、時間、形式、会場、Track、Topic、Service、Speakerに加え、Walk-up Only（当日参加のみ）でも絞り込み
-- AWS公式体験と、出典リンク付きの非公式Side eventsを分けて表示
+- AWS公式のイベント・体験と、出典リンク付きの非公式コミュニティイベントを区別して表示。AWS公式ページの曜日別イベントも掲載
 - Card / Compact表示、タイトル・時刻順、最大3件の比較
 - My PlanのTimeline / List表示、重複検出、空き時間からのセッション検索
 - AWS接続時はScheduleの予約済みセッションを起動時に非同期で読み込み、TimelineとICS書き出しに反映
@@ -131,7 +131,7 @@ AWS接続の手順は[アプリガイド（日本語）](app/README.ja.md)を参
 - AWS一括予約はAWS接続時に確認後、最大10件を送信し、Schedule再読込と個別結果表示を行います。既存予約の解除も可能ですが、AWS Scheduleに載っている項目だけが対象で、取消APIは1件ずつ呼び出します。予約済み項目はMy Planに取り込み表示しますが、AWS予約とローカル候補の状態は別管理です。
 - AWSお気に入りは単体またはMy Planから最大10件を登録し、Scheduleを再読込して結果を確認します。AWSの応答が不明な場合は安全のため自動再送せず、Scheduleで確認してください。AWSお気に入り書き込みは実アカウントで未検証です。
 - MCPは読み取り専用で、セッション検索・Schedule読取・重複確認・空き時間提案を提供し、予約や取消はできません。ローカルstdio接続に対応したクライアント、またはSecure MCP Tunnel設定後のChatGPT Webから利用できます。
-- AWS公式体験に加え、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に掲載されたサイドイベントも掲載します。この一覧はAWS非公式で、AWSとは提携・承認関係にありません。掲載時刻や満席情報は主催者による確認を意味せず、申込条件・会場・受付状況も変更される場合があるため、申込前に各イベントの主催者ページで確認してください。
+- [AWS公式のre:Invent体験ページ](https://aws.amazon.com/jp/events/reinvent/experiences/uniquely-reinvent/)にある曜日別イベント・会場内体験と、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に掲載されたコミュニティイベントを区別して掲載します。Conference PartiesはAWS非公式で、AWSとは提携・承認関係にありません。時刻が公式ページにない場合は未確認として表示し、第三者一覧の時刻にはその出典リンクを付けます。参加条件・会場・受付状況は変わる場合があるため、参加前に各イベントの主催者情報を確認してください。
 
 ## ライセンス
 

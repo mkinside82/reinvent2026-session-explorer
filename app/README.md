@@ -66,9 +66,9 @@ For a local MCP client, configure the absolute path to `app/reinvent-explorer` a
 
 Keep `mcp-tunnel` running while using the connection. In ChatGPT Web, add a custom MCP server under Plugins / Apps and choose the same tunnel under Connection. ChatGPT must allow custom MCP servers for your account or workspace. See the [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). Tunnel IDs and API keys are not stored in this repository. The tunnel only forwards MCP calls; it does not forward the local AWS sign-in callback. If signed out, open the URL returned by `begin_aws_sign_in` on the Mac running the AWS-connected server. Browser WebMCP is a separate feature for working with My Plan in the open tab.
 
-## Side event sources
+## Events and experiences
 
-The side event list combines AWS official experiences with community events listed on [Conference Parties' AWS re:Invent 2026 page](https://conferenceparties.com/reinvent2026/). Conference Parties is unofficial and is not affiliated with or endorsed by AWS. Times and capacity labels from that listing are not organizer-confirmed. Check the source links and each organizer's registration page before attending; event details and availability may change.
+The Events & experiences list includes weekday events and on-site activities from [AWS's official re:Invent experiences page](https://aws.amazon.com/jp/events/reinvent/experiences/uniquely-reinvent/), plus community events listed on [Conference Parties' AWS re:Invent 2026 page](https://conferenceparties.com/reinvent2026/). The app marks AWS official experiences and keeps third-party listings distinct. Times not specified by AWS are left unconfirmed; times from Conference Parties link back to that listing. Conference Parties is unofficial and is not affiliated with or endorsed by AWS. Check the source links and organizer details before attending; event details and availability may change.
 
 ## Data and privacy boundaries
 

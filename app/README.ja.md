@@ -68,9 +68,9 @@ AWS接続時は参加者本人のAWS Eventsカタログを読み込みます。�
 
 トンネルを使う間は`mcp-tunnel`を起動したままにします。ChatGPT WebのPlugins / AppsからカスタムMCPサーバーを追加し、ConnectionでTunnelを選んで同じTunnelを指定してください。ChatGPT側でカスタムMCPサーバーを追加できる権限も必要です。詳細は[OpenAI Secure MCP Tunnel公式手順](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)を参照してください。Tunnel IDやAPI keyはリポジトリに保存しません。OpenAIトンネルはChatGPTへの中継であり、ローカルAWSサインインのコールバックを転送しません。未サインインなら`begin_aws_sign_in`が認証URLを返すため、AWS接続サーバーを動かしているMac上でURLを開いてください。ブラウザー内WebMCPは別機能です。
 
-## サイドイベントの出典
+## イベント・体験の出典
 
-サイドイベント一覧にはAWS公式体験のほか、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に載っているコミュニティイベントを掲載します。同サイトはAWS非公式で、AWSとの提携・承認関係はありません。掲載ページに記載された時刻や満席表示は主催者確認済みを意味しません。参加条件・会場・空き状況は変わる可能性があるため、申込前にカードの出典リンクと主催者の申込ページを確認してください。
+[AWS公式のre:Invent体験ページ](https://aws.amazon.com/jp/events/reinvent/experiences/uniquely-reinvent/)に掲載された曜日別イベントや会場内体験と、[Conference Partiesのre:Invent 2026一覧](https://conferenceparties.com/reinvent2026/)に載っているコミュニティイベントを区別して掲載します。AWS公式体験には識別タグを付け、公式ページに時刻がない項目は未確認として扱います。Conference PartiesはAWS非公式で、AWSとの提携・承認関係はありません。同一覧由来の時刻には一覧への出典リンクを付けます。参加条件・会場・空き状況は変わる場合があるため、参加前にカードの出典リンクと主催者情報を確認してください。
 
 ## データとプライバシー
 

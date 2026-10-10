@@ -172,7 +172,10 @@ for (const width of [1440, 390])
       'Venue / Room',
       'Amazon Bedrock',
     ])
-      assert(get('#detailContent').innerHTML.includes(t(expected)));
+      assert(
+        get('#detailContent').innerHTML.includes(t(expected)),
+        `detail should include ${expected}`,
+      );
     const currentURL = window.location.href,
       scrollBefore = window.scrollY;
     delegated({ plan: 'SEC001' });
@@ -297,7 +300,7 @@ for (const width of [1440, 390])
     const sessionCount = get('#resultCount').textContent;
     click('#showSessions');
     click('#showSideEvents');
-    assert.match(get('#resultCount').textContent, /サイドイベント/);
+    assert.match(get('#resultCount').textContent, /イベント・体験/);
     click('#openFilters');
     assert(get('#facetFields').innerHTML.includes('data-facet="topic"'));
     assert(get('#facetFields').innerHTML.includes('カテゴリ'));

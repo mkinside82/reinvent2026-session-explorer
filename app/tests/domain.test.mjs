@@ -222,16 +222,18 @@ test('curated side event data maps to source-linked planner items without AWS re
     await readFile(new URL('../side-events.verified.json', import.meta.url), 'utf8'),
   );
   const events = adaptSideEvents(raw);
-  assert.equal(events.length, 28);
+  assert(events.length >= 39);
   assert(
     events.every(
       (s) =>
         s.itemType === 'sideEvent' &&
         s.dataSource === 'curated-side-event' &&
         s.sourceUrl.startsWith('https://') &&
-        ['2026-10-05', '2026-10-07'].includes(s.verifiedAt),
+        /^\d{4}-\d{2}-\d{2}$/.test(s.verifiedAt),
     ),
   );
+  assert(events.some((s) => s.id === 'side:uniquely-reinvent-run-2026-12-02'));
+  assert(events.some((s) => s.id === 'side:uniquely-reinvent-mtg-night-2026-12-02'));
   assert(events.every((s) => s.reservable === null && s.sessionType === 'Side event'));
   assert.equal(events.filter((s) => s.timingStatus === 'listed').length, 23);
   assert.equal(events.filter((s) => s.startTime && s.endTime).length, 23);

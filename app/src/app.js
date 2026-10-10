@@ -189,7 +189,7 @@ function calendarExportItems() {
         item.itemType === 'personalTime'
           ? stateLabel('Personal time')
           : item.itemType === 'sideEvent'
-            ? t('サイドイベント')
+            ? t('イベント・体験')
             : !scheduleReady
               ? t('AWS状態未確認')
               : reserved
@@ -415,7 +415,7 @@ function renderExplore(map) {
     favoriteMode = state.exploreKind === 'favorites',
     favoritesEnabled = state.source === 'live' && state.localApiAvailable && !!state.accountId;
   $('#resultCount').textContent = sideMode
-    ? ui`${found.length.toLocaleString(getLocale())} side events`
+    ? ui`${found.length.toLocaleString(getLocale())} events & experiences`
     : state.status === 'loading'
       ? t('読み込み中')
       : state.status === 'error'
@@ -428,7 +428,7 @@ function renderExplore(map) {
   $('#cards').setAttribute('aria-busy', String(!sideMode && state.status === 'loading'));
   if (sideMode && !state.sideEvents.length)
     $('#cards').innerHTML = blank(
-      t('掲載中のサイドイベントはありません'),
+      t('掲載中のイベント・体験はありません'),
       t('出典を確認できたイベントを追加します。'),
     );
   else if (sideMode && !found.length)

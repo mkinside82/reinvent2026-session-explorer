@@ -285,7 +285,10 @@ export function normalizeSideEvent(row) {
     levelLabel: 'No technical level',
     venue: row.venue || '',
     room: row.room || '',
-    topics: row.category ? [row.category] : [],
+    topics: [row.category, ...(Array.isArray(row.tags) ? row.tags : [])]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map((value) => value.trim())
+      .filter((value, index, values) => values.indexOf(value) === index),
     uiState: row.uiState,
     dataSource: 'curated-side-event',
     itemType: 'sideEvent',
