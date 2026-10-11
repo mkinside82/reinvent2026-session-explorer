@@ -302,8 +302,9 @@ svg {
 .context-line {
   display: flex;
   justify-content: space-between;
-  align-items: start;
-  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
   color: var(--muted);
   font-size: 0.75rem;
   padding: 14px 0;
@@ -313,6 +314,19 @@ svg {
 }
 .context-line span {
   white-space: nowrap;
+}
+.time-display-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.time-display-toggle input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
 }
 .workspace {
   display: grid;
@@ -564,6 +578,10 @@ svg {
   color: var(--muted);
   white-space: nowrap;
 }
+.status-tag.reservability {
+  white-space: normal;
+  text-align: center;
+}
 .status-tag.planned {
   color: var(--accent);
   background: var(--accent-soft);
@@ -572,6 +590,18 @@ svg {
 .status-tag.reserved {
   color: var(--success);
   background: var(--success-bg);
+}
+.status-tag.reservability.is-eligible {
+  color: #285b46;
+  background: #e8f4ed;
+}
+.status-tag.reservability.is-ineligible {
+  color: #6a5960;
+  background: #f0edf0;
+}
+.status-tag.reservability.is-unknown {
+  color: #725b2f;
+  background: #f8f1df;
 }
 .status-tag.favorite {
   color: var(--accent);
@@ -772,6 +802,17 @@ svg {
 .plan-item-time {
   font-size: 0.8125rem;
   font-weight: 550;
+}
+.plan-item-time-wrap {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.japan-time,
+.slot-japan-time {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 450;
 }
 .plan-item .title-button {
   font-size: 0.875rem;
@@ -1154,6 +1195,26 @@ input[type='checkbox'] {
   border-color: #ebcdd1;
   border-left-color: var(--danger);
 }
+.timeline-slot .slot-japan-time {
+  margin-top: -4px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.outside-timeline {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+.outside-timeline > summary {
+  padding: 10px 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
 .slot-time {
   font-size: 0.75rem;
   font-weight: 600;
@@ -1507,6 +1568,9 @@ input[type='checkbox'] {
   .context-line span {
     display: block;
     margin-top: 3px;
+  }
+  .time-display-toggle {
+    margin: 5px 0 0;
   }
   .workspace {
     display: block;

@@ -191,7 +191,7 @@ test('AWS OpenAPI session fields map through the adapter without inventing missi
   ])[0];
   assert.equal(noZone.startTime, '10:15');
   assert.equal(noZone.endTime, '11:00');
-  assert.equal(noZone.displayTimeZone, '');
+  assert.equal(noZone.displayTimeZone, 'America/Los_Angeles');
   const badZone = adaptAwsSessions([
     {
       sessionId: 'aws-bad-zone',
@@ -200,7 +200,7 @@ test('AWS OpenAPI session fields map through the adapter without inventing missi
     },
   ])[0];
   assert.equal(badZone.startTime, '10:15');
-  assert.equal(badZone.displayTimeZone, 'timezone-unavailable');
+  assert.equal(badZone.displayTimeZone, 'America/Los_Angeles');
   assert.equal(adaptAwsSessions([raw, { ...raw, title: 'duplicate' }]).length, 1);
 });
 test('AWS seat availability bands stay distinct in the application model', () => {

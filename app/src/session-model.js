@@ -77,6 +77,7 @@ export function normalizeSession(record) {
     sourceTime:
       record.sourceTime && typeof record.sourceTime === 'object' ? { ...record.sourceTime } : null,
     displayTimeZone: text(record.displayTimeZone),
+    timezoneAssumed: record.timezoneAssumed === true,
     sourceUrl: text(record.sourceUrl),
     sourceName: text(record.sourceName),
     verifiedAt: text(record.verifiedAt),
@@ -155,6 +156,12 @@ function matches(s, filters) {
     );
   if (query && !searchText.get(s).includes(query)) return false;
   if (filters.walkUpOnly && s.uiState?.availability !== 'walkUp') return false;
+  const reservability = selections(filters.reservability);
+  if (reservability.length) {
+    if (s.dataSource !== 'aws' || s.itemType !== 'session') return false;
+    const status = s.reservable === true ? 'yes' : s.reservable === false ? 'no' : 'unknown';
+    if (!reservability.includes(status)) return false;
+  }
   for (const key of ['date', 'track', 'level', 'sessionType']) {
     const values = selections(filters[key]);
     if (values.length && !values.includes(s[key])) return false;

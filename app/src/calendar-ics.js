@@ -1,4 +1,5 @@
-const TZ = 'America/Los_Angeles';
+import { localDateTimeEpoch, VENUE_TIME_ZONE } from './time-zones.js';
+
 const textEncoder = new TextEncoder();
 const escaped = (value) =>
   String(value || '')
@@ -7,61 +8,8 @@ const escaped = (value) =>
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,');
 export function calendarInstant(date, time) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time || ''))
-    return null;
-  const [year, month, day] = date.split('-').map(Number),
-    [hour, minute] = time.split(':').map(Number),
-    target = Date.UTC(year, month - 1, day, hour, minute);
-  let epoch = target;
-  try {
-    for (let i = 0; i < 5; i++) {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      }).formatToParts(epoch);
-      const p = Object.fromEntries(
-        parts.filter((x) => x.type !== 'literal').map((x) => [x.type, x.value]),
-      );
-      const represented = Date.UTC(
-        Number(p.year),
-        Number(p.month) - 1,
-        Number(p.day),
-        Number(p.hour),
-        Number(p.minute),
-      );
-      const delta = target - represented;
-      if (!delta) break;
-      epoch += delta;
-    }
-    const back = new Intl.DateTimeFormat('en-US', {
-      timeZone: TZ,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(epoch);
-    const p = Object.fromEntries(
-      back.filter((x) => x.type !== 'literal').map((x) => [x.type, x.value]),
-    );
-    if (
-      Number(p.year) !== year ||
-      Number(p.month) !== month ||
-      Number(p.day) !== day ||
-      Number(p.hour) !== hour ||
-      Number(p.minute) !== minute
-    )
-      return null;
-    return new Date(epoch).toISOString();
-  } catch {
-    return null;
-  }
+  const epoch = localDateTimeEpoch(date, time, VENUE_TIME_ZONE);
+  return epoch === null ? null : new Date(epoch).toISOString();
 }
 function utcStamp(date, time) {
   const value = calendarInstant(date, time);
@@ -101,7 +49,7 @@ function eventFor(item, stamp) {
     item.calendarAvailability,
     item.abstract,
     item.code ? `Session: ${item.code}` : '',
-    `Venue local time zone: ${TZ}`,
+    `Venue local time zone: ${VENUE_TIME_ZONE}`,
   ]
     .filter(Boolean)
     .join('\n');

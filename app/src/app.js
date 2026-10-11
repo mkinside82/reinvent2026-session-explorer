@@ -45,7 +45,14 @@ import {
 } from './recommendations.js';
 import { PLAN_KEY, readPlan, writePlan } from './plan-store.js';
 import { MULTI_KEYS, defaultFilters, readSearchState, searchURL } from './search-state.js';
-import { esc, dateLabel, timeLabel, venueToday, blank } from './ui-utils.js?v=20261007';
+import {
+  esc,
+  dateLabel,
+  timeLabel,
+  japanTimeLabel,
+  venueToday,
+  blank,
+} from './ui-utils.js?v=20261011-tz';
 import {
   renderCard,
   renderCompact,
@@ -56,6 +63,13 @@ import {
 } from './views.js';
 import { translateSessionToJapanese } from './translate.js';
 const $ = (s) => document.querySelector(s);
+const displayedTime = (item, referenceDate = item.date) =>
+  [
+    `${timeLabel(item, referenceDate)} · ${t('会場現地時間（Las Vegas）')}`,
+    state.showJapanTime ? japanTimeLabel(item) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 const storage = {
   getItem: (key) => localStorage.getItem(key),
   setItem: (key, value) => localStorage.setItem(key, value),
@@ -91,6 +105,10 @@ try {
 let rememberedView;
 try {
   rememberedView = storage.getItem('reinvent-view');
+} catch {}
+let showJapanTime = true;
+try {
+  showJapanTime = storage.getItem('reinvent-show-japan-time') !== '0';
 } catch {}
 const state = {
   sessions: [],
@@ -134,6 +152,7 @@ const state = {
   exploreView: 'sessions',
   planDate: '',
   planView: 'timeline',
+  showJapanTime,
   active: 'explore',
   detailId: null,
   detailTranslations: new Map(),
@@ -162,6 +181,7 @@ const FACET_LABELS = {
   venue: '会場',
   service: 'Service',
   speaker: 'Speaker',
+  reservability: '予約可否',
   walkUpOnly: 'Walk-up Only',
 };
 const byId = (id) => state.byId.get(id),
@@ -362,7 +382,7 @@ function renderApplied() {
     for (const value of state.filters[key]) {
       count++;
       chips.push(
-        ui`<button class="filter-chip" data-remove-filter="${key}" data-filter-value="${esc(value)}" aria-label="${t(FACET_LABELS[key])} ${esc(value)}を解除">${t(FACET_LABELS[key])}: ${esc(key === 'date' ? dateLabel(value) : value)} <span aria-hidden="true">×</span></button>`,
+        ui`<button class="filter-chip" data-remove-filter="${key}" data-filter-value="${esc(value)}" aria-label="${t(FACET_LABELS[key])} ${esc(facetValueLabel(key, value))}を解除">${t(FACET_LABELS[key])}: ${esc(facetValueLabel(key, value))} <span aria-hidden="true">×</span></button>`,
       );
     }
   if (state.exploreKind !== 'sideEvents' && Number.isFinite(state.filters.minLevel)) {
@@ -449,6 +469,7 @@ function renderExplore(map) {
             favoritesEnabled,
             state.favoritePending,
             state.favoriteUnknown,
+            state.showJapanTime,
           )
         : subset
             .map((s) =>
@@ -460,6 +481,7 @@ function renderExplore(map) {
                 favoritesEnabled,
                 state.favoritePending.has(s.id),
                 state.favoriteUnknown.has(s.id),
+                state.showJapanTime,
               ),
             )
             .join('')) +
@@ -514,6 +536,7 @@ function renderExplore(map) {
             favoritesEnabled,
             state.favoritePending,
             state.favoriteUnknown,
+            state.showJapanTime,
           )
         : subset
             .map((s) =>
@@ -525,6 +548,7 @@ function renderExplore(map) {
                 favoritesEnabled,
                 state.favoritePending.has(s.id),
                 state.favoriteUnknown.has(s.id),
+                state.showJapanTime,
               ),
             )
             .join('')) +
@@ -673,6 +697,7 @@ function renderPlan(items, map) {
       state.favoritePending,
       state.favoriteUnknown,
       state.planDate === 'all' || state.planDate === 'unknown' ? '' : state.planDate,
+      state.showJapanTime,
     );
   else if (state.planDate === 'all')
     content = blank(
@@ -688,6 +713,7 @@ function renderPlan(items, map) {
       reservationAvailable,
       state.favoritePending,
       state.favoriteUnknown,
+      state.showJapanTime,
     );
   const missing = state.plan.filter((id) => !byId(id));
   if (state.status === 'ready' && missing.length)
@@ -745,8 +771,11 @@ function renderSourceInfo() {
         'プレビュー（サンプルデータ） · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。',
       );
   $('#timeContext').textContent = live
-    ? t('AWSのtimezoneがある場合はLas Vegasへ変換し、欠落時はAPI記載の時刻をそのまま表示します。')
-    : t('時刻：会場現地時間（Las Vegas）');
+    ? t(
+        'すべての時刻はLas Vegas現地時間です。AWSに使えるtimezone情報がない場合、このアプリでは現地時間と仮定します。',
+      )
+    : t('すべての時刻はLas Vegas現地時間です。');
+  $('#showJapanTime').checked = state.showJapanTime;
   const meta = state.catalogMeta;
   let note = '';
   if (live && meta) {
@@ -860,7 +889,7 @@ function renderFavoriteDialog() {
     return;
   }
   if (state.favoriteStage === 'confirm') {
-    body.innerHTML = ui`<p class="reservation-warning">${t('選択したセッションをAWSお気に入りに登録します。予約は行いません。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}</li>`).join('')}</ul>`;
+    body.innerHTML = ui`<p class="reservation-warning">${t('選択したセッションをAWSお気に入りに登録します。予約は行いません。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(displayedTime(item))}</li>`).join('')}</ul>`;
     $('#favoriteIntro').textContent = t('登録対象を確認してください。');
     next.textContent = t('この内容でAWSへ登録');
     next.hidden = false;
@@ -881,7 +910,7 @@ function renderFavoriteDialog() {
               : unknown
                 ? t('お気に入り結果不明 · AWS Scheduleを更新してください')
                 : t('お気に入りに追加予定');
-          return ui`<label class="reservation-choice ${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-favorite-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)} · ${note}</small></span></label>`;
+          return ui`<label class="reservation-choice ${disabled ? 'is-disabled' : ''}"><input type="checkbox" data-favorite-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(displayedTime(item))} · ${note}</small></span></label>`;
         })
         .join('')
     : blank(t('PlanにAWSセッションがありません'), t('AWSセッションをMy Planに追加してください。'));
@@ -1105,7 +1134,7 @@ function renderReservationDialog() {
         ? reserved
             .map((id) => {
               const item = byId(id);
-              return ui`<label class="reservation-choice"><input type="checkbox" data-reservation-select="${esc(id)}" ${state.reservationSelection.has(id) ? 'checked' : ''} ${!state.reservationSelection.has(id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item?.title || t('カタログにないセッション'))}</strong><small>${esc(item?.code || id)}${item ? ui` · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}` : ''} · ${t('AWS Scheduleに予約済み')}</small></span></label>`;
+              return ui`<label class="reservation-choice"><input type="checkbox" data-reservation-select="${esc(id)}" ${state.reservationSelection.has(id) ? 'checked' : ''} ${!state.reservationSelection.has(id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item?.title || t('カタログにないセッション'))}</strong><small>${esc(item?.code || id)}${item ? ui` · ${esc(dateLabel(item.date))} ${esc(displayedTime(item))}` : ''} · ${t('AWS Scheduleに予約済み')}</small></span></label>`;
             })
             .join('')
         : t('<p class="hint">AWS Scheduleに予約済みのセッションはありません。</p>');
@@ -1154,7 +1183,7 @@ function renderReservationDialog() {
     next.hidden = true;
     back.textContent = t('閉じる');
   } else if (state.reservationStage === 'confirm') {
-    body.innerHTML = ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)}${conflicts.get(item.id)?.length ? ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>` : ''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;
+    body.innerHTML = ui`<p class="reservation-warning">${t('次のセッションを1回のリクエストでAWSへ送信します。送信後の個別結果を表示します。')}</p><ul class="action-preview">${selected.map((item) => ui`<li>${esc(item.title)} · ${esc(dateLabel(item.date))} ${esc(displayedTime(item))}${conflicts.get(item.id)?.length ? ui` <span class="conflict-inline">${t('My Plan内で時間重複')}</span>` : ''}</li>`).join('')}</ul><p class="hint">${t('AWSの予約成功はMy Planの候補選択とは別に管理されます。')}</p>`;
     next.textContent = t('この内容でAWSへ送信');
     next.hidden = false;
     back.textContent = t('選択へ戻る');
@@ -1170,7 +1199,7 @@ function renderReservationDialog() {
               : item.reservable === true
                 ? t('予約可能')
                 : t('AWS API上で予約対象外');
-            return ui`<label class="reservation-choice ${eligible ? '' : 'is-disabled'}"><input type="checkbox" data-reservation-select="${esc(item.id)}" ${state.reservationSelection.has(item.id) ? 'checked' : ''} ${eligible ? '' : 'disabled'} ${!state.reservationSelection.has(item.id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(item.startTime)}–${esc(item.endTime)} · ${esc(note)}${conflicts.get(item.id)?.length ? ui` · ${t('My Plan内で時間重複')}` : ''}</small></span></label>`;
+            return ui`<label class="reservation-choice ${eligible ? '' : 'is-disabled'}"><input type="checkbox" data-reservation-select="${esc(item.id)}" ${state.reservationSelection.has(item.id) ? 'checked' : ''} ${eligible ? '' : 'disabled'} ${!state.reservationSelection.has(item.id) && tooMany ? 'disabled' : ''}><span><strong>${esc(item.title)}</strong><small>${esc(item.code)} · ${esc(dateLabel(item.date))} ${esc(displayedTime(item))} · ${esc(note)}${conflicts.get(item.id)?.length ? ui` · ${t('My Plan内で時間重複')}` : ''}</small></span></label>`;
           })
           .join('')
       : t('<p class="hint">My PlanにAWSセッションがありません。</p>');
@@ -1432,6 +1461,7 @@ function renderCurrentDetail() {
       state.source === 'live' && state.localApiAvailable && !!state.accountId,
       state.favoritePending.has(item.id),
       state.favoriteUnknown.has(item.id),
+      state.showJapanTime,
     );
     const button = $('#detailContent [data-translate-detail]');
     button?.addEventListener('click', () => void translateDetail(button.dataset.translateDetail));
@@ -1449,6 +1479,7 @@ function savePlan() {
       state.comparison.map(byId).filter(Boolean),
       new Set(state.plan),
       conflictMap(plannerItems()),
+      state.showJapanTime,
     );
 }
 function setPlan(id, included) {
@@ -1615,6 +1646,7 @@ function openCompare(ids) {
     state.comparison.map(byId),
     new Set(state.plan),
     conflictMap(plannerItems()),
+    state.showJapanTime,
   );
   openDialog('compareDialog');
 }
@@ -1636,6 +1668,18 @@ function findGap(date, from, to) {
 function buildFacets() {
   const source = state.exploreKind === 'sideEvents' ? state.sideEvents : state.sessions;
   for (const key of MULTI_KEYS) {
+    if (key === 'reservability') {
+      facets[key] = [
+        ...new Set(
+          source
+            .filter((s) => s.dataSource === 'aws' && s.itemType === 'session')
+            .map((s) =>
+              s.reservable === true ? 'yes' : s.reservable === false ? 'no' : 'unknown',
+            ),
+        ),
+      ].sort();
+      continue;
+    }
     const field = { topic: 'topics', service: 'services', speaker: 'speakers' }[key] || key;
     facets[key] = [
       ...new Set(
@@ -1648,6 +1692,14 @@ function buildFacets() {
     ].sort();
   }
 }
+function facetValueLabel(key, value) {
+  if (key === 'date') return dateLabel(value);
+  if (key === 'reservability')
+    return t(
+      { yes: 'AWS予約対象', no: '予約対象外', unknown: '予約可否不明' }[value] || '予約可否不明',
+    );
+  return value;
+}
 function renderFacetOptions(key, query = '') {
   const selected = state.draft[key],
     all = [...new Set([...selected, ...facets[key]])];
@@ -1657,7 +1709,7 @@ function renderFacetOptions(key, query = '') {
     visible
       .map(
         (value) =>
-          ui`<label class="facet-option"><input type="checkbox" data-facet="${key}" value="${esc(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${esc(key === 'date' ? dateLabel(value) : value)}</span></label>`,
+          ui`<label class="facet-option"><input type="checkbox" data-facet="${key}" value="${esc(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${esc(facetValueLabel(key, value))}</span></label>`,
       )
       .join('') +
     (values.length > 100
@@ -1687,7 +1739,12 @@ function openFilters({ preserveDraft = false } = {}) {
     .join('');
   if (!sideMode) {
     const walkupFilter = ui`<fieldset class="facet-group walkup-filter"><legend>${t('参加方法')}</legend><label class="facet-option"><input id="walkUpOnlyFilter" type="checkbox" ${state.draft.walkUpOnly ? 'checked' : ''}><span>${t('Walk-up Only（当日参加のみ）')}</span></label><p class="hint">${t('事前予約なしで現地参加するセッションに絞り込みます。')}</p></fieldset>`;
-    $('#facetFields').innerHTML = walkupFilter + $('#facetFields').innerHTML;
+    const reservabilityFilter = state.sessions.some(
+      (s) => s.dataSource === 'aws' && s.itemType === 'session',
+    )
+      ? `${renderFacet('reservability')}${t('<p class="hint">AWSカタログの予約対象区分です。空席状況とは別で、実際の予約はAWS側が判定します。</p>')}`
+      : '';
+    $('#facetFields').innerHTML = walkupFilter + reservabilityFilter + $('#facetFields').innerHTML;
   }
   $('#from').value = preserveDraft ? draftFrom : state.filters.from;
   $('#to').value = preserveDraft ? draftTo : state.filters.to;
@@ -2004,6 +2061,7 @@ $('#languageSwitch').addEventListener('change', () => {
       state.comparison.map(byId).filter(Boolean),
       new Set(state.plan),
       conflictMap(plannerItems()),
+      state.showJapanTime,
     );
   if ($('#filterDialog').open) openFilters({ preserveDraft: true });
   if ($('#reservationDialog').open) renderReservationDialog();
@@ -2161,6 +2219,24 @@ $('#planDate').addEventListener('change', () => {
   const scroll = $('#planContent').querySelector?.('.timeline-scroll');
   if (scroll) scroll.scrollTop = 0;
 });
+$('#showJapanTime').addEventListener('change', () => {
+  state.showJapanTime = $('#showJapanTime').checked;
+  try {
+    storage.setItem('reinvent-show-japan-time', state.showJapanTime ? '1' : '0');
+  } catch {}
+  render();
+  if (state.detailId && byId(state.detailId)) renderCurrentDetail();
+  if ($('#compareDialog').open)
+    $('#compareContent').innerHTML = renderComparison(
+      state.comparison.map(byId).filter(Boolean),
+      new Set(state.plan),
+      conflictMap(plannerItems()),
+      state.showJapanTime,
+    );
+  if ($('#reservationDialog').open) renderReservationDialog();
+  if ($('#favoriteDialog').open) renderFavoriteDialog();
+  if ($('#icsExportDialog').open) refreshIcsExportDialog();
+});
 $('#todayPlan').addEventListener('click', () => {
   state.planDate = venueToday();
   render();
@@ -2212,7 +2288,7 @@ function refreshIcsExportDialog() {
           const canExport = validInterval(item),
             checked = state.icsSelection.has(item.id),
             dateTime = canExport
-              ? `${dateLabel(item.date)} ${timeLabel(item, item.date)}`
+              ? `${dateLabel(item.date)} ${displayedTime(item, item.date)}`
               : t('日時未定 · ICS出力対象外');
           return ui`<label class="ics-export-option ${canExport ? '' : 'is-disabled'}"><input type="checkbox" data-ics-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${canExport ? '' : 'disabled'}><span><strong>${esc(item.title)}</strong><small>${esc(item.code || '')}${item.code ? ' · ' : ''}${esc(dateTime)}</small><small>${esc(item.calendarStatus)}${item.calendarAvailability ? ui` · <span class="walkup-label">${esc(item.calendarAvailability)}</span>` : ''}</small></span></label>`;
         })

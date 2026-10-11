@@ -6,7 +6,16 @@ import {
   freeSlots,
   sessionStates,
 } from './session-model.js';
-import { esc, dateLabel, timeLabel, place, clock, blank } from './ui-utils.js?v=20261007';
+import {
+  esc,
+  dateLabel,
+  timeLabel,
+  japanTimeLabel,
+  place,
+  clock,
+  blank,
+} from './ui-utils.js?v=20261011';
+import { VENUE_TIME_ZONE } from './time-zones.js';
 const AWS_EVENT_CATALOG_URL =
   'https://registration.awsevents.com/flow/awsevents/reinvent2026/eventcatalog/page/eventcatalog';
 const statusClass = (value) =>
@@ -15,7 +24,9 @@ export const statusTags = (s, planned, conflicted, includeUnplanned = false) =>
   ui`<div class="status-tags">${sessionStates(s, planned, conflicted)
     .filter((v) => includeUnplanned || v !== 'Not planned')
     .map((v) => ui`<span class="status-tag ${statusClass(v)}">${esc(stateLabel(v))}</span>`)
-    .join('')}</div>`;
+    .join(
+      '',
+    )}${s.dataSource === 'aws' && s.itemType === 'session' ? ui`<span class="status-tag reservability ${s.reservable === true ? 'is-eligible' : s.reservable === false ? 'is-ineligible' : 'is-unknown'}" title="${t('AWSカタログの予約対象区分です。空席状況とは別で、実際の予約はAWS側が判定します。')}">${t(s.reservable === true ? 'AWS予約対象' : s.reservable === false ? '予約対象外' : '予約可否不明')}</span>` : ''}</div>`;
 export function sessionCode(s, compact = false) {
   const code = String(s.code || '').trim();
   if (!code) return ui`<span class="session-code-empty">—</span>`;
@@ -77,11 +88,13 @@ export function renderCard(
   favoritesEnabled = false,
   favoritePending = false,
   favoriteUnknown = false,
+  showJapanTime = true,
 ) {
   const included = plan.has(s.id),
     conflicted = !!map.get(s.id)?.length,
     side = s.itemType === 'sideEvent';
-  return ui`<article class="session-card" data-card-detail="${esc(s.id)}" data-session-id="${esc(s.id)}"><div class="card-heading"><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button>${sessionCode(s)}</h3>${statusTags(s, included, conflicted)}</div>${walkupNotice(s)}<div class="time-line"><span>${esc(timeLabel(s))}</span><span class="date">${esc(dateLabel(s.date))}</span></div><div class="card-meta"><span>${side ? t('イベント・体験') : esc(s.sessionType || t('Type未定'))}</span>${side ? ui`<span class="meta-separator">·</span><span>${esc(t(s.topics[0] || t('コミュニティイベント')))}</span>` : ui`<span class="meta-separator">·</span><span>Level ${esc(s.level || t('未定'))}</span><span class="meta-separator">·</span><span>${esc(s.track || t('Track未定'))}</span>`}</div><p class="card-summary">${esc(s.abstract || t('概要はまだ公開されていません。'))}</p><div class="topic-tags">${[
+  const japanTime = showJapanTime ? japanTimeLabel(s) : '';
+  return ui`<article class="session-card" data-card-detail="${esc(s.id)}" data-session-id="${esc(s.id)}"><div class="card-heading"><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button>${sessionCode(s)}</h3>${statusTags(s, included, conflicted)}</div>${walkupNotice(s)}<div class="time-line"><span>${esc(timeLabel(s))}</span><span class="date">${esc(dateLabel(s.date))}</span></div>${japanTime ? ui`<div class="japan-time">${esc(japanTime)}</div>` : ''}<div class="card-meta"><span>${side ? t('イベント・体験') : esc(s.sessionType || t('Type未定'))}</span>${side ? ui`<span class="meta-separator">·</span><span>${esc(t(s.topics[0] || t('コミュニティイベント')))}</span>` : ui`<span class="meta-separator">·</span><span>Level ${esc(s.level || t('未定'))}</span><span class="meta-separator">·</span><span>${esc(s.track || t('Track未定'))}</span>`}</div><p class="card-summary">${esc(s.abstract || t('概要はまだ公開されていません。'))}</p><div class="topic-tags">${[
     ...s.topics,
     ...s.services,
   ]
@@ -99,6 +112,7 @@ export function renderCompact(
   favoritesEnabled = false,
   pendingIds = new Set(),
   unknownIds = new Set(),
+  showJapanTime = true,
 ) {
   const sideEvents = items.some((item) => item.itemType === 'sideEvent');
   return ui`<div class="compact-list"><div class="compact-header" aria-hidden="true"><span>Time</span><span>Title / Venue</span><span>${sideEvents ? t('カテゴリ') : 'Type / Level'}</span><span>Plan</span></div>${items
@@ -106,8 +120,9 @@ export function renderCompact(
       const included = plan.has(s.id),
         conflicted = !!map.get(s.id)?.length,
         side = s.itemType === 'sideEvent',
-        category = side ? t(s.category || '') : '';
-      return ui`<article class="compact-row" data-card-detail="${esc(s.id)}" data-session-id="${esc(s.id)}"><div class="compact-time">${esc(timeLabel(s))}<span class="date">${esc(dateLabel(s.date))}</span></div><div class="compact-title"><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button></h3>${walkupNotice(s, true)}<div class="compact-sub"><span>${esc(place(s))}</span><span>· ${side ? category : `${esc(s.sessionType || t('Type未定'))} · Level ${esc(s.level || t('未定'))}`}</span></div><div class="compact-actions">${sessionCode(s, true)}<button class="compare-toggle" data-compare-toggle="${esc(s.id)}" aria-pressed="${compare.includes(s.id)}">${compare.includes(s.id) ? t('✓ 比較対象') : t('比較に追加')}</button>${favoriteAction(s, favoritesEnabled, pendingIds.has(s.id), unknownIds.has(s.id))}${conflicted ? ui`<button class="conflict-link" data-conflict-compare="${esc(s.id)}">Conflict · Compare</button>` : ''}</div></div><div class="compact-type">${side ? category : esc(s.sessionType || t('Type未定'))}${side && s.topics.some((topic) => topic !== s.category) ? ui`<br>${esc(t(s.topics.find((topic) => topic !== s.category)))}` : !side ? ui`<br>Level ${esc(s.level || t('未定'))}` : ''}</div><div class="compact-status">${statusTags(s, included, conflicted)}${planAction(s, included)}</div></article>`;
+        category = side ? t(s.category || '') : '',
+        japanTime = showJapanTime ? japanTimeLabel(s) : '';
+      return ui`<article class="compact-row" data-card-detail="${esc(s.id)}" data-session-id="${esc(s.id)}"><div class="compact-time">${esc(timeLabel(s))}<span class="date">${esc(dateLabel(s.date))}</span>${japanTime ? ui`<span class="japan-time">${esc(japanTime)}</span>` : ''}</div><div class="compact-title"><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button></h3>${walkupNotice(s, true)}<div class="compact-sub"><span>${esc(place(s))}</span><span>· ${side ? category : `${esc(s.sessionType || t('Type未定'))} · Level ${esc(s.level || t('未定'))}`}</span></div><div class="compact-actions">${sessionCode(s, true)}<button class="compare-toggle" data-compare-toggle="${esc(s.id)}" aria-pressed="${compare.includes(s.id)}">${compare.includes(s.id) ? t('✓ 比較対象') : t('比較に追加')}</button>${favoriteAction(s, favoritesEnabled, pendingIds.has(s.id), unknownIds.has(s.id))}${conflicted ? ui`<button class="conflict-link" data-conflict-compare="${esc(s.id)}">Conflict · Compare</button>` : ''}</div></div><div class="compact-type">${side ? category : esc(s.sessionType || t('Type未定'))}${side && s.topics.some((topic) => topic !== s.category) ? ui`<br>${esc(t(s.topics.find((topic) => topic !== s.category)))}` : !side ? ui`<br>Level ${esc(s.level || t('未定'))}` : ''}</div><div class="compact-status">${statusTags(s, included, conflicted)}${planAction(s, included)}</div></article>`;
     })
     .join('')}</div>`;
 }
@@ -120,6 +135,7 @@ export function renderPlanList(
   pendingIds = new Set(),
   unknownIds = new Set(),
   referenceDate = '',
+  showJapanTime = true,
 ) {
   let last;
   return items
@@ -130,10 +146,11 @@ export function renderPlanList(
           : '';
       last = s.date;
       const reserved = s.uiState?.attendance === 'reserved',
-        favorited = s.uiState?.favorite === true;
+        favorited = s.uiState?.favorite === true,
+        japanTime = showJapanTime ? japanTimeLabel(s) : '';
       return (
         heading +
-        ui`<article class="plan-item" data-planned-id="${esc(s.id)}"><div class="plan-item-top"><span class="plan-item-time">${esc(timeLabel(s, referenceDate || s.date))}</span><div class="plan-item-actions">${s.itemType === 'personalTime' ? ui`<span class="status-tag personal-time">${stateLabel('Personal time')}</span>${validInterval(s) ? ui`<button class="quiet small" data-edit-personal-time="${esc(s.personalTimeId)}">${t('編集')}</button>` : ''}<button class="quiet small" data-delete-personal-time="${esc(s.personalTimeId)}">${t('削除')}</button>` : ''}${reserved ? ui`<span class="status-tag reserved">${stateLabel('Reserved')}</span>` : ''}${favorited ? ui`<span class="status-tag favorite">${stateLabel('Favorite')}</span>` : ''}${favoriteAction(s, favoritesEnabled, pendingIds.has(s.id), unknownIds.has(s.id))}${localPlan.has(s.id) ? ui`<button class="remove-button" data-remove-plan="${esc(s.id)}" aria-label="${esc(s.code || s.title)}の候補をMy Planから削除">候補を外す</button>` : ''}</div></div><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button></h3><div class="plan-item-meta">${sessionCode(s, true)}<span>${esc(place(s))}</span></div>${walkupNotice(s, true)}${sideEventSource(s)}${!validInterval(s) ? t('<p class="hint" style="margin-top:14px">日時未定のため、重複を確認できません。</p>') : ''}${conflictNote(s, map)}</article>`
+        ui`<article class="plan-item" data-planned-id="${esc(s.id)}"><div class="plan-item-top"><div class="plan-item-time-wrap"><span class="plan-item-time">${esc(timeLabel(s, referenceDate || s.date))}</span>${japanTime ? ui`<span class="japan-time">${esc(japanTime)}</span>` : ''}</div><div class="plan-item-actions">${s.itemType === 'personalTime' ? ui`<span class="status-tag personal-time">${stateLabel('Personal time')}</span>${validInterval(s) ? ui`<button class="quiet small" data-edit-personal-time="${esc(s.personalTimeId)}">${t('編集')}</button>` : ''}<button class="quiet small" data-delete-personal-time="${esc(s.personalTimeId)}">${t('削除')}</button>` : ''}${reserved ? ui`<span class="status-tag reserved">${stateLabel('Reserved')}</span>` : ''}${favorited ? ui`<span class="status-tag favorite">${stateLabel('Favorite')}</span>` : ''}${favoriteAction(s, favoritesEnabled, pendingIds.has(s.id), unknownIds.has(s.id))}${localPlan.has(s.id) ? ui`<button class="remove-button" data-remove-plan="${esc(s.id)}" aria-label="${esc(s.code || s.title)}の候補をMy Planから削除">候補を外す</button>` : ''}</div></div><h3><button class="title-button" data-detail="${esc(s.id)}">${esc(s.title)}</button></h3><div class="plan-item-meta">${sessionCode(s, true)}<span>${esc(place(s))}</span></div>${walkupNotice(s, true)}${sideEventSource(s)}${!validInterval(s) ? t('<p class="hint" style="margin-top:14px">日時未定のため、重複を確認できません。</p>') : ''}${conflictNote(s, map)}</article>`
       );
     })
     .join('');
@@ -146,30 +163,36 @@ export function renderTimeline(
   favoritesEnabled = false,
   pendingIds = new Set(),
   unknownIds = new Set(),
+  showJapanTime = true,
 ) {
   const timed = items.filter(validInterval),
     unknown = items.filter((s) => !validInterval(s));
   let html = '';
   if (timed.length) {
-    const bounds = timed
-        .map((s) => intervalBounds(s, date))
-        .filter(Boolean)
-        .map(([a, b]) => [Math.max(0, a), Math.min(1440, b)])
-        .filter(([a, b]) => a < b),
-      start = Math.min(9 * 60, Math.floor(Math.min(...bounds.map(([a]) => a)) / 60) * 60),
-      end = Math.max(18 * 60, Math.ceil(Math.max(...bounds.map(([, b]) => b)) / 60) * 60),
-      scale = 1.8;
+    const start = 4 * 60,
+      end = 22 * 60,
+      scale = 1.8,
+      layout = timelineLayout(timed, date),
+      visibleItems = layout.filter(
+        ({ start: itemStart, end: itemEnd }) => itemEnd > start && itemStart < end,
+      ),
+      outsideRange = timed.filter((s) => {
+        const bounds = intervalBounds(s, date);
+        return bounds && (bounds[1] <= start || bounds[0] >= end);
+      });
     const gaps = freeSlots(timed, start, end, date);
     const hours = [];
     for (let t = start; t <= end; t += 60)
       hours.push(
         ui`<div class="hour-line" style="top:${(t - start) * scale + 12}px"><span>${clock(t)}</span></div>`,
       );
-    const slots = timelineLayout(timed, date)
-      .map(
-        ({ session: s, start: itemStart, end: itemEnd, lane, lanes }) =>
-          ui`<button data-detail="${esc(s.id)}" data-timeline-id="${esc(s.id)}" class="timeline-slot ${map.get(s.id)?.length ? 'conflicting' : ''}" style="top:${(itemStart - start) * scale + 12}px;height:${(itemEnd - itemStart) * scale}px;left:calc(${(lane / lanes) * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" aria-label="${esc(s.title)}、${esc(timeLabel(s, date))}${s.uiState?.availability === 'walkUp' ? t('、Walk-up Only・事前予約不可') : ''}${s.uiState?.attendance === 'reserved' ? `、${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? `、${stateLabel('Favorite')}` : ''}${map.get(s.id)?.length ? '、Conflict' : ''}" title="${esc(s.title)}"><span class="slot-time">${esc(timeLabel(s, date))}</span><span class="slot-title">${esc(s.title)}</span><span class="slot-code">${esc(s.code)}${s.uiState?.attendance === 'reserved' ? ui` · ${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? ui` · ${stateLabel('Favorite')}` : ''}${s.uiState?.availability === 'walkUp' ? ui` · ${t('Walk-up Only')}` : ''}${map.get(s.id)?.length ? ' · Conflict' : ''}</span></button>`,
-      )
+    const slots = visibleItems
+      .map(({ session: s, start: itemStart, end: itemEnd, lane, lanes }) => {
+        const visibleStart = Math.max(itemStart, start),
+          visibleEnd = Math.min(itemEnd, end),
+          japanTime = showJapanTime ? japanTimeLabel(s) : '';
+        return ui`<button data-detail="${esc(s.id)}" data-timeline-id="${esc(s.id)}" class="timeline-slot ${map.get(s.id)?.length ? 'conflicting' : ''}" style="top:${(visibleStart - start) * scale + 12}px;height:${(visibleEnd - visibleStart) * scale}px;left:calc(${(lane / lanes) * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" aria-label="${esc(s.title)}、${esc(timeLabel(s, date))}${japanTime ? `、${japanTime}` : ''}${s.uiState?.availability === 'walkUp' ? t('、Walk-up Only・事前予約不可') : ''}${s.uiState?.attendance === 'reserved' ? `、${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? `、${stateLabel('Favorite')}` : ''}${map.get(s.id)?.length ? '、Conflict' : ''}" title="${esc(s.title)}"><span class="slot-time">${esc(timeLabel(s, date))}</span><span class="slot-title">${esc(s.title)}</span><span class="slot-code">${esc(s.code)}${s.uiState?.attendance === 'reserved' ? ui` · ${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? ui` · ${stateLabel('Favorite')}` : ''}${s.uiState?.availability === 'walkUp' ? ui` · ${t('Walk-up Only')}` : ''}${map.get(s.id)?.length ? ' · Conflict' : ''}</span>${japanTime ? ui`<span class="slot-japan-time">${esc(japanTime)}</span>` : ''}</button>`;
+      })
       .join('');
     const free = gaps
       .filter((g) => g.duration >= 30)
@@ -178,14 +201,16 @@ export function renderTimeline(
           ui`<button class="free-slot" data-gap-start="${clock(g.start)}" data-gap-end="${clock(g.end)}" data-gap-date="${date}" style="top:${(g.start - start) * scale + 12}px;height:${g.duration * scale}px" aria-label="${clock(g.start)}から${clock(g.end)}の空き時間でセッションを探す"><strong>FREE ${g.duration} min</strong><span>${clock(g.start)}–${clock(g.end)}</span>${g.duration >= 60 ? '<span>Find sessions for this time</span>' : ''}</button>`,
       )
       .join('');
-    html = ui`<p class="timeline-caption">${esc(dateLabel(date))} · 09:00–18:00を基本に表示<br>タップで詳細 · 重複は横並び</p><div class="timeline-scroll"><div class="timeline-canvas" style="height:${(end - start) * scale + 36}px">${hours.join('')}${free}${slots}</div></div><div class="gap-list"><h3>空き時間</h3>${gaps.length ? gaps.map((g) => ui`<div class="gap-row"><span>${clock(g.start)}–${clock(g.end)}<br><span class="muted">FREE ${g.duration} min</span></span><button data-gap-start="${clock(g.start)}" data-gap-end="${clock(g.end)}" data-gap-date="${date}">Find sessions for this time</button></div>`).join('') : t('<p class="hint">表示時間内に空きはありません。</p>')}<p class="hint" style="margin-top:8px">移動時間は含みません。会場間の移動も考慮してください。</p></div>`;
+    html = ui`<p class="timeline-caption">${esc(dateLabel(date))} · 04:00–22:00 · ${t('会場現地時間（Las Vegas）')}<br>${t('タップで詳細 · 重複は横並び')}</p><div class="timeline-scroll"><div class="timeline-canvas" style="height:${(end - start) * scale + 36}px">${hours.join('')}${free}${slots}</div></div><div class="gap-list"><h3>${t('空き時間')}</h3>${gaps.length ? gaps.map((g) => ui`<div class="gap-row"><span>${clock(g.start)}–${clock(g.end)}<br><span class="muted">FREE ${g.duration} min</span></span><button data-gap-start="${clock(g.start)}" data-gap-end="${clock(g.end)}" data-gap-date="${date}">Find sessions for this time</button></div>`).join('') : t('<p class="hint">表示時間内に空きはありません。</p>')}<p class="hint" style="margin-top:8px">${t('移動時間は含みません。会場間の移動も考慮してください。')}</p></div>`;
     const conflicted = timed.filter((s) => map.get(s.id)?.length);
     if (conflicted.length)
-      html += ui`<div class="timeline-conflicts"><h3>Schedule Conflict</h3>${renderPlanList(conflicted, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, date)}</div>`;
-    html += ui`<details class="timeline-session-list"><summary>この日の候補を整理（${timed.length}件）</summary>${renderPlanList(timed, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, date)}</details>`;
+      html += ui`<div class="timeline-conflicts"><h3>Schedule Conflict</h3>${renderPlanList(conflicted, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, date, showJapanTime)}</div>`;
+    html += ui`<details class="timeline-session-list"><summary>${t('この日の候補を整理（')}${timed.length}${t('件）')}</summary>${renderPlanList(timed, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, date, showJapanTime)}</details>`;
+    if (outsideRange.length)
+      html += ui`<details class="timeline-session-list outside-timeline"><summary>${t('表示範囲外（04:00–22:00）')} · ${outsideRange.length}${t('件')}</summary>${renderPlanList(outsideRange, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, date, showJapanTime)}</details>`;
   }
   if (unknown.length)
-    html += ui`<p class="eyebrow" style="margin-top:16px">日時未定 · Timeline対象外</p>${renderPlanList(unknown, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds)}`;
+    html += ui`<p class="eyebrow" style="margin-top:16px">${t('日時未定 · Timeline対象外')}</p>${renderPlanList(unknown, map, false, localPlan, favoritesEnabled, pendingIds, unknownIds, '', showJapanTime)}`;
   return html;
 }
 export function renderDetail(
@@ -196,6 +221,7 @@ export function renderDetail(
   favoritesEnabled = false,
   favoritePending = false,
   favoriteUnknown = false,
+  showJapanTime = true,
 ) {
   const included = plan.has(s.id),
     statusNote =
@@ -212,12 +238,15 @@ export function renderDetail(
           : s.itemType === 'sideEvent'
             ? t('イベント・体験の情報です。AWSセッションの予約対象ではありません。')
             : t('空席・予約状態はデモです。'),
-    timeBasis =
-      s.itemType === 'sideEvent'
-        ? ui`${sideEventTimingLabel(s)} · ${s.timezone || t('タイムゾーン未定')}`
-        : s.dataSource.startsWith('aws')
-          ? t('AWSが返したUTC時刻をLas Vegasの時刻に変換')
-          : t('会場現地時間（Las Vegas）'),
+    japanTime = showJapanTime ? japanTimeLabel(s) : '',
+    sourceTimeZone = s.sourceTime?.timezone || s.timezone || '',
+    timeBasis = s.timezoneAssumed
+      ? t(
+          '元データに使えるタイムゾーン情報がないため、このアプリではLas Vegas現地時間と仮定しています。',
+        )
+      : sourceTimeZone && sourceTimeZone !== VENUE_TIME_ZONE
+        ? t('元データのタイムゾーンからLas Vegas現地時間へ換算しています。')
+        : t('すべての表示時刻はLas Vegas現地時間です。'),
     translated =
       translation.status === 'ready'
         ? ui`<p class="translation-result" lang="ja">${esc(translation.text)}</p>`
@@ -230,13 +259,17 @@ export function renderDetail(
           : '',
     topics =
       s.itemType === 'sideEvent' ? s.topics.filter((topic) => topic !== s.category) : s.topics;
-  return ui`<div class="sheet-top"><div><p class="eyebrow">${s.itemType === 'sideEvent' ? t('イベント・体験') : t('SESSION DETAIL')}</p>${sessionCode(s)}</div><button class="icon-button" data-close="detailDialog" aria-label="Session Detailを閉じる">×</button></div><div class="detail-body"><h2 id="detailTitle" class="detail-title">${esc(s.title)}</h2>${statusTags(s, included, !!map.get(s.id)?.length)}${walkupNotice(s)}<p class="detail-abstract">${esc(s.abstract || t('概要はまだ公開されていません。'))}</p>${s.abstract ? ui`<div class="translation-inline"><button class="quiet small" data-translate-detail="${esc(s.id)}" ${translation.status === 'loading' ? 'disabled' : ''}>${translation.status === 'ready' ? t('再翻訳') : t('日本語訳')}</button><span class="hint" role="status">${translationStatus}</span>${translated}</div>` : ''}<dl class="detail-grid"><dt>Speakers</dt><dd>${esc(s.speakers.join('、') || t('登壇者未定'))}</dd><dt>Date / Time</dt><dd>${esc(s.date ? ui`${s.date} · ${dateLabel(s.date)}` : t('日付未定'))}<br>${esc(timeLabel(s))}<br><span class="hint">${esc(timeBasis)}</span></dd><dt>Venue / Room</dt><dd>${esc(place(s))}</dd>${s.itemType === 'sideEvent' ? ui`<dt>${t('カテゴリ')}</dt><dd>${esc(t(s.category || ''))}</dd>` : ui`<dt>Level / Type</dt><dd>Level ${esc(s.levelLabel || s.level || t('未定'))} · ${esc(s.sessionType || t('Type未定'))}</dd><dt>Track</dt><dd>${esc(s.tracks.join('、') || t('Track未定'))}</dd><dt>Services</dt><dd>${esc(s.services.join('、') || t('未指定'))}</dd><dt>Roles / Industries</dt><dd>${esc([...s.roles, ...s.industries].join('、') || t('未指定'))}</dd><dt>Keywords</dt><dd>${esc(s.keywords.join('、') || t('未指定'))}</dd>`}${s.itemType === 'sideEvent' ? (topics.length ? ui`<dt>Topics</dt><dd>${esc(topics.map((topic) => t(topic)).join('、'))}</dd>` : '') : ui`<dt>Topics</dt><dd>${esc(topics.join('、') || t('未定'))}</dd>`}${s.dataSource === 'aws' ? ui`<dt>Reservable</dt><dd>${s.reservable === null ? t('不明') : s.reservable ? 'Yes' : 'No'}</dd><dt>${t('公式情報')}</dt><dd><a class="source-link" href="${AWS_EVENT_CATALOG_URL}" target="_blank" rel="noopener noreferrer">${t('AWS公式カタログで開く')}</a><p class="hint">${t('AWS公式カタログでセッションコードを検索してください。')}</p></dd>` : ''}${sideEventDetails(s)}</dl>${!validInterval(s) ? t('<p class="hint" style="margin-top:14px">日時未定のため、重複を確認できません。</p>') : ''}${included ? conflictNote(s, map) : ''}<button class="quiet small" data-compare-toggle="${esc(s.id)}" style="margin-top:16px">比較対象に追加 / 解除</button></div><div class="sheet-footer detail-footer">${favoriteAction(s, favoritesEnabled, favoritePending, favoriteUnknown)}<p class="detail-note">${esc(statusNote)} My Planへの追加は予約ではありません。</p>${planAction(s, included)}</div>`;
+  return ui`<div class="sheet-top"><div><p class="eyebrow">${s.itemType === 'sideEvent' ? t('イベント・体験') : t('SESSION DETAIL')}</p>${sessionCode(s)}</div><button class="icon-button" data-close="detailDialog" aria-label="Session Detailを閉じる">×</button></div><div class="detail-body"><h2 id="detailTitle" class="detail-title">${esc(s.title)}</h2>${statusTags(s, included, !!map.get(s.id)?.length)}${walkupNotice(s)}<p class="detail-abstract">${esc(s.abstract || t('概要はまだ公開されていません。'))}</p>${s.abstract ? ui`<div class="translation-inline"><button class="quiet small" data-translate-detail="${esc(s.id)}" ${translation.status === 'loading' ? 'disabled' : ''}>${translation.status === 'ready' ? t('再翻訳') : t('日本語訳')}</button><span class="hint" role="status">${translationStatus}</span>${translated}</div>` : ''}<dl class="detail-grid"><dt>Speakers</dt><dd>${esc(s.speakers.join('、') || t('登壇者未定'))}</dd><dt>Date / Time</dt><dd>${esc(s.date ? ui`${s.date} · ${dateLabel(s.date)}` : t('日付未定'))}<br>${esc(timeLabel(s))}${japanTime ? ui`<br><span class="japan-time">${esc(japanTime)}</span>` : ''}<br><span class="hint">${esc(timeBasis)}</span></dd><dt>Venue / Room</dt><dd>${esc(place(s))}</dd>${s.itemType === 'sideEvent' ? ui`<dt>${t('カテゴリ')}</dt><dd>${esc(t(s.category || ''))}</dd>` : ui`<dt>Level / Type</dt><dd>Level ${esc(s.levelLabel || s.level || t('未定'))} · ${esc(s.sessionType || t('Type未定'))}</dd><dt>Track</dt><dd>${esc(s.tracks.join('、') || t('Track未定'))}</dd><dt>Services</dt><dd>${esc(s.services.join('、') || t('未指定'))}</dd><dt>Roles / Industries</dt><dd>${esc([...s.roles, ...s.industries].join('、') || t('未指定'))}</dd><dt>Keywords</dt><dd>${esc(s.keywords.join('、') || t('未指定'))}</dd>`}${s.itemType === 'sideEvent' ? (topics.length ? ui`<dt>Topics</dt><dd>${esc(topics.map((topic) => t(topic)).join('、'))}</dd>` : '') : ui`<dt>Topics</dt><dd>${esc(topics.join('、') || t('未定'))}</dd>`}${s.dataSource === 'aws' ? ui`<dt>Reservable</dt><dd>${s.reservable === null ? t('不明') : s.reservable ? 'Yes' : 'No'}</dd><dt>${t('公式情報')}</dt><dd><a class="source-link" href="${AWS_EVENT_CATALOG_URL}" target="_blank" rel="noopener noreferrer">${t('AWS公式カタログで開く')}</a><p class="hint">${t('AWS公式カタログでセッションコードを検索してください。')}</p></dd>` : ''}${sideEventDetails(s)}</dl>${!validInterval(s) ? t('<p class="hint" style="margin-top:14px">日時未定のため、重複を確認できません。</p>') : ''}${included ? conflictNote(s, map) : ''}<button class="quiet small" data-compare-toggle="${esc(s.id)}" style="margin-top:16px">比較対象に追加 / 解除</button></div><div class="sheet-footer detail-footer">${favoriteAction(s, favoritesEnabled, favoritePending, favoriteUnknown)}<p class="detail-note">${esc(statusNote)} My Planへの追加は予約ではありません。</p>${planAction(s, included)}</div>`;
 }
-export function renderComparison(items, plan, map) {
+export function renderComparison(items, plan, map, showJapanTime = true) {
   if (items.length < 2)
     return ui`<div class="sheet-top"><h2 id="compareTitle">Session Compare</h2><button class="icon-button" data-close="compareDialog" aria-label="比較を閉じる">×</button></div>${blank(t('2件以上のセッションを選んでください'), t('一覧の「比較に追加」で最大3件を選べます。'))}`;
   const rows = [
-    ['Time', (s) => ui`${s.date || t('日付未定')} / ${timeLabel(s)}`],
+    [
+      'Time',
+      (s) =>
+        `${s.date || t('日付未定')} / ${timeLabel(s)}${showJapanTime && japanTimeLabel(s) ? ` / ${japanTimeLabel(s)}` : ''}`,
+    ],
     ['Abstract', (s) => s.abstract || t('概要未定')],
     ['Type / Level', (s) => ui`${s.sessionType || t('Type未定')} / Level ${s.level || t('未定')}`],
     ['Speaker', (s) => s.speakers.join('、') || t('登壇者未定')],

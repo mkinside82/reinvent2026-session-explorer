@@ -1,4 +1,10 @@
 import { t, getLocale } from './i18n.js';
+import {
+  JAPAN_TIME_ZONE,
+  VENUE_TIME_ZONE,
+  dateTimePartsInZone,
+  localDateTimeEpoch,
+} from './time-zones.js';
 export const esc = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
@@ -24,6 +30,25 @@ export const timeLabel = (s, referenceDate = s.date) => {
       ? `${t('翌')}${s.endTime || t('未定')}`
       : s.endTime || t('未定');
   return `${start}–${end}`;
+};
+export const japanTimeLabel = (s) => {
+  const timeZone = s.displayTimeZone || VENUE_TIME_ZONE;
+  if (timeZone === 'timezone-unavailable' || !s.date || !s.startTime) return '';
+  const start = localDateTimeEpoch(s.date, s.startTime, timeZone);
+  if (start === null) return '';
+  const format = (epoch) => {
+    const parts = dateTimePartsInZone(epoch, JAPAN_TIME_ZONE);
+    return parts && { date: parts.date, label: `${dateLabel(parts.date)} ${parts.time}` };
+  };
+  const startParts = format(start);
+  if (!startParts) return '';
+  if (!s.endTime) return `${t('日本時間')} ${startParts.label}`;
+  const end = localDateTimeEpoch(s.endDate || s.date, s.endTime, timeZone);
+  if (end === null) return '';
+  const endParts = format(end),
+    endLabel =
+      endParts.date === startParts.date ? endParts.label.split(' ').at(-1) : endParts.label;
+  return `${t('日本時間')} ${startParts.label}–${endLabel}`;
 };
 export const place = (s) => [s.venue, s.room].filter(Boolean).join(' / ') || t('会場未定');
 export const venueToday = () =>

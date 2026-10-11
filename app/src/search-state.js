@@ -9,6 +9,7 @@ export const MULTI_KEYS = [
   'venue',
   'service',
   'speaker',
+  'reservability',
 ];
 const FILTER_KEYS = ['q', 'from', 'to', 'fit', 'walkUpOnly', ...MULTI_KEYS];
 const OWNED_KEYS = new Set([

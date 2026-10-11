@@ -147,6 +147,15 @@ const english = Object.freeze({
     'One or more sessions are already reserved. Refresh AWS Schedule.',
   予約可能: 'Reservable',
   'AWS API上で予約対象外': 'Not reservable by AWS',
+  AWS予約対象: 'AWS reservation eligible',
+  予約対象外: 'Not eligible for AWS reservation',
+  予約可否不明: 'Reservation eligibility unknown',
+  予約可否: 'Reservation eligibility',
+  日本時間: 'Japan time',
+  日本時間も表示: 'Also show Japan time',
+  'AWSカタログの予約対象区分です。空席状況とは別で、実際の予約はAWS側が判定します。':
+    'This is catalog eligibility, not seat availability. AWS makes the final reservation decision.',
+  '表示範囲外（04:00–22:00）': 'Outside displayed range (04:00–22:00)',
   予約時間が他の予定と重複: 'Conflicts with another scheduled session',
   すでに予約済み: 'Already scheduled',
   満席: 'Session is full',
@@ -214,8 +223,14 @@ const english = Object.freeze({
   'AWS Scheduleから同期': 'Synced from AWS Schedule',
   'AWS Scheduleの個人予定です。編集・削除はAWS側へ反映します。':
     'This personal time is managed by AWS Schedule. Edits and deletion are sent to AWS.',
-  'AWSが返したUTC時刻をLas Vegasの時刻に変換':
-    'UTC time returned by AWS, converted to Las Vegas local time',
+  'すべての時刻はLas Vegas現地時間です。': 'All times are shown in Las Vegas local time.',
+  'すべての時刻はLas Vegas現地時間です。AWSに使えるtimezone情報がない場合、このアプリでは現地時間と仮定します。':
+    'All times are shown in Las Vegas local time. When AWS does not provide a usable time zone, this app assumes the supplied time is Las Vegas local time.',
+  '元データに使えるタイムゾーン情報がないため、このアプリではLas Vegas現地時間と仮定しています。':
+    'The source has no usable time zone, so this app assumes Las Vegas local time.',
+  '元データのタイムゾーンからLas Vegas現地時間へ換算しています。':
+    'Converted from the source time zone to Las Vegas local time.',
+  'すべての表示時刻はLas Vegas現地時間です。': 'All displayed times use the Las Vegas time zone.',
   AWS個人予定を追加: 'Add AWS personal time',
   AWS個人予定を編集: 'Edit AWS personal time',
   'AWS個人予定を削除しますか？': 'Delete this AWS personal-time entry?',
@@ -361,8 +376,6 @@ const english = Object.freeze({
   AWS接続: 'AWS connected',
   'プレビュー（サンプルデータ） · 予約・空席情報はサンプルです。My Planへの追加は予約ではありません。':
     'Preview (sample data) · Reservation and availability information is sample data. Adding to My Plan does not reserve a seat.',
-  'AWSのtimezoneがある場合はLas Vegasへ変換し、欠落時はAPI記載の時刻をそのまま表示します。':
-    'AWS times with a timezone are converted to Las Vegas time. Without a timezone, times are displayed as supplied by the API.',
   '時刻：会場現地時間（Las Vegas）': 'Time: venue local time (Las Vegas)',
   'AWS catalog取得中 · ': 'Loading AWS catalog · ',
   ページ受信: ' pages received',
@@ -496,9 +509,6 @@ const english = Object.freeze({
     'Search for the session code in the AWS official catalog.',
   '空席・予約状態はサンプルデータです。': 'Availability and reservation states are sample data.',
   '会場現地時間（Las Vegas）': 'Venue local time (Las Vegas)',
-  'AWS時刻をそのまま表示 · timezone ': 'AWS times displayed as supplied · Timezone ',
-  を変換できませんでした: ' could not be converted',
-  'AWS記載の現地時刻 · timezone未提供': 'AWS local time as supplied · No timezone provided',
   コード未定: 'Code TBD',
   'Session Detailを閉じる': 'Close session details',
   未指定: 'Not specified',

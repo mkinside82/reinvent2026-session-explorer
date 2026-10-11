@@ -1,4 +1,15 @@
 import { normalizeSession } from './session-model.js';
+import {
+  VENUE_TIME_ZONE,
+  convertWallClock,
+  dateTimePartsInZone,
+  isValidTimeZone,
+  localDateTimeEpoch,
+  venueLocalDateTimeToUtc,
+  venueLocalTimestampParts,
+} from './time-zones.js';
+
+export { venueLocalDateTimeToUtc };
 /** Demo-provider adapter. Legacy start/end/type fields are mapped only here.
  * Phase 2: implement a server-backed provider returning Application Sessions.
  * AWS response mapping, pagination and tokens must live behind that boundary.
@@ -14,6 +25,7 @@ export function adaptDemoData(raw) {
         endTime: row?.endTime ?? row?.end,
         sessionType: row?.sessionType ?? row?.type,
         dataSource: 'demo',
+        displayTimeZone: VENUE_TIME_ZONE,
       }),
     )
     .filter((s) => {
@@ -33,102 +45,36 @@ function sessionEnd(start, length) {
   if (total <= 0 || total > 24 * 60) return '';
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
-function partsInZone(epoch, zone) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: zone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(epoch));
-  return Object.fromEntries(
-    parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]),
-  );
-}
-function localDateTimeEpoch(date, time, zone) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time || ''))
-    return null;
-  const [year, month, day] = date.split('-').map(Number),
-    [hour, minute] = time.split(':').map(Number),
-    desired = Date.UTC(year, month - 1, day, hour, minute);
-  let candidate = desired;
-  for (let i = 0; i < 5; i++) {
-    const p = partsInZone(candidate, zone),
-      represented = Date.UTC(
-        Number(p.year),
-        Number(p.month) - 1,
-        Number(p.day),
-        Number(p.hour),
-        Number(p.minute),
-      );
-    const adjustment = desired - represented;
-    if (!adjustment) break;
-    candidate += adjustment;
-  }
-  const check = partsInZone(candidate, zone);
-  return Number(check.year) === year &&
-    Number(check.month) === month &&
-    Number(check.day) === day &&
-    Number(check.hour) === hour &&
-    Number(check.minute) === minute
-    ? candidate
-    : null;
-}
-export function venueLocalDateTimeToUtc(date, time) {
-  const epoch = localDateTimeEpoch(date, time, 'America/Los_Angeles');
-  return epoch === null ? null : new Date(epoch).toISOString().slice(0, 19);
-}
 function venueLocalTime(time) {
   const date = typeof time.date === 'string' ? time.date : '',
     start = typeof time.time === 'string' ? time.time : '',
     length = typeof time.length === 'string' ? time.length : '';
   const timezone = typeof time.timezone === 'string' ? time.timezone : '';
   const original = { date, time: start, length, timezone };
-  if (!timezone)
+  const sourceZoneAvailable = isValidTimeZone(timezone),
+    sourceZone = sourceZoneAvailable ? timezone : VENUE_TIME_ZONE,
+    startEpoch = localDateTimeEpoch(date, start, sourceZone);
+  if (startEpoch === null)
     return {
       date,
       startTime: start,
       endTime: sessionEnd(start, length),
       sourceTime: original,
-      displayTimeZone: '',
+      displayTimeZone: VENUE_TIME_ZONE,
+      timezoneAssumed: true,
     };
-  try {
-    const startEpoch = localDateTimeEpoch(date, start, timezone);
-    if (startEpoch === null)
-      return {
-        date,
-        startTime: start,
-        endTime: sessionEnd(start, length),
-        sourceTime: original,
-        displayTimeZone: 'timezone-unavailable',
-      };
-    const localStart = partsInZone(startEpoch, 'America/Los_Angeles'),
-      localDate = `${localStart.year}-${localStart.month}-${localStart.day}`,
-      localStartTime = `${localStart.hour}:${localStart.minute}`;
-    let endTime = '';
-    if (/^[1-9]\d{0,3}$/.test(length)) {
-      const end = partsInZone(startEpoch + Number(length) * 60000, 'America/Los_Angeles');
-      if (`${end.year}-${end.month}-${end.day}` === localDate)
-        endTime = `${end.hour}:${end.minute}`;
-    }
-    return {
-      date: localDate,
-      startTime: localStartTime,
-      endTime,
-      sourceTime: original,
-      displayTimeZone: 'America/Los_Angeles',
-    };
-  } catch {
-    return {
-      date,
-      startTime: start,
-      endTime: sessionEnd(start, length),
-      sourceTime: original,
-      displayTimeZone: 'timezone-unavailable',
-    };
-  }
+  const localStart = dateTimePartsInZone(startEpoch, VENUE_TIME_ZONE),
+    endEpoch = /^[1-9]\d{0,3}$/.test(length) ? startEpoch + Number(length) * 60000 : null,
+    localEnd = endEpoch === null ? null : dateTimePartsInZone(endEpoch, VENUE_TIME_ZONE);
+  return {
+    date: localStart.date,
+    endDate: localEnd?.date || localStart.date,
+    startTime: localStart.time,
+    endTime: localEnd?.time || '',
+    sourceTime: original,
+    displayTimeZone: VENUE_TIME_ZONE,
+    timezoneAssumed: !sourceZoneAvailable,
+  };
 }
 /** Maps only fields defined by the AWS Events OpenAPI Session schema. */
 export function normalizeAwsSession(row) {
@@ -163,6 +109,7 @@ export function normalizeAwsSession(row) {
     date: local.date,
     startTime: local.startTime,
     endTime: local.endTime,
+    endDate: local.endDate,
     sessionType: row.type,
     level,
     levelLabel: level,
@@ -186,6 +133,7 @@ export function normalizeAwsSession(row) {
     dataSource: 'aws',
     sourceTime: local.sourceTime,
     displayTimeZone: local.displayTimeZone,
+    timezoneAssumed: local.timezoneAssumed,
     uiState: { availability, attendance: 'none' },
   });
 }
@@ -198,7 +146,7 @@ export function adaptAwsSessions(raw) {
     return true;
   });
 }
-/** Maps AWS Schedule personal-time blocks from UTC into the venue's local time. */
+/** Maps AWS Schedule personal-time wall-clock blocks into the canonical venue-time model. */
 export function adaptAwsPersonalTimes(raw) {
   if (!Array.isArray(raw)) throw new Error('INVALID_RESPONSE');
   const seen = new Set();
@@ -213,20 +161,9 @@ export function adaptAwsPersonalTimes(raw) {
         return null;
       const start = row.startDateTime,
         end = row.endDateTime,
-        valid = (value) =>
-          typeof value === 'string' &&
-          /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) &&
-          !Number.isNaN(Date.parse(`${value}Z`));
-      if (!valid(start) || !valid(end)) return null;
-      const startEpoch = Date.parse(`${start}Z`),
-        endEpoch = Date.parse(`${end}Z`);
-      if (endEpoch <= startEpoch) return null;
-      const localStart = partsInZone(startEpoch, 'America/Los_Angeles'),
-        localEnd = partsInZone(endEpoch, 'America/Los_Angeles'),
-        sameDate =
-          localStart.year === localEnd.year &&
-          localStart.month === localEnd.month &&
-          localStart.day === localEnd.day;
+        localStart = venueLocalTimestampParts(start),
+        localEnd = venueLocalTimestampParts(end);
+      if (!localStart || !localEnd || localEnd.epoch <= localStart.epoch) return null;
       const id = `aws-personal:${row.personalTimeId}`;
       if (seen.has(id)) return null;
       seen.add(id);
@@ -235,11 +172,13 @@ export function adaptAwsPersonalTimes(raw) {
         code: 'PERSONAL',
         title: typeof row.title === 'string' ? row.title : 'Personal time',
         abstract: typeof row.description === 'string' ? row.description : '',
-        date: `${localStart.year}-${localStart.month}-${localStart.day}`,
-        startTime: `${localStart.hour}:${localStart.minute}`,
-        endTime: sameDate ? `${localEnd.hour}:${localEnd.minute}` : '',
+        date: localStart.date,
+        startTime: localStart.time,
+        endDate: localEnd.date,
+        endTime: localEnd.time,
         sessionType: 'Personal time',
         venue: typeof row.location === 'string' ? row.location : '',
+        displayTimeZone: VENUE_TIME_ZONE,
         dataSource: 'aws-personal-time',
         itemType: 'personalTime',
         uiState: { personalTime: true },
@@ -265,26 +204,45 @@ export function normalizeSideEvent(row) {
     !row.sourceUrl.startsWith('https://')
   )
     return null;
-  const date = typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : '';
   if (
     row.timingStatus &&
     !['confirmed', 'tentative', 'listed', 'unknown'].includes(row.timingStatus)
   )
     return null;
+  const date = typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : '',
+    sourceTimeZone = typeof row.timezone === 'string' ? row.timezone : '',
+    sourceZoneAvailable = isValidTimeZone(sourceTimeZone),
+    sourceZone = sourceZoneAvailable ? sourceTimeZone : VENUE_TIME_ZONE,
+    startTime = typeof row.startTime === 'string' ? row.startTime : '',
+    endTime = typeof row.endTime === 'string' ? row.endTime : '';
+  let endDate = typeof row.endDate === 'string' ? row.endDate : date;
+  if (!row.endDate && startTime && endTime && endTime < startTime && date) {
+    const nextDate = new Date(`${date}T12:00:00Z`);
+    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+    endDate = nextDate.toISOString().slice(0, 10);
+  }
+  const convertedStart = startTime ? convertWallClock(date, startTime, sourceZone) : null,
+    convertedEnd = endTime ? convertWallClock(endDate, endTime, sourceZone) : null,
+    normalizedDate = convertedStart?.date || date,
+    normalizedEndDate = convertedEnd?.date || endDate,
+    normalizedStartTime = convertedStart?.time || startTime,
+    normalizedEndTime = convertedEnd?.time || endTime;
   const item = normalizeSession({
     id: `side:${row.id}`,
     title: row.title,
     abstract: row.description,
     code: 'EVENT',
-    date,
-    endDate: row.endDate || date,
-    startTime: row.startTime || '',
-    endTime: row.endTime || '',
+    date: normalizedDate,
+    endDate: normalizedEndDate,
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
     sessionType: 'Side event',
     level: '',
     levelLabel: 'No technical level',
     venue: row.venue || '',
     room: row.room || '',
+    displayTimeZone: VENUE_TIME_ZONE,
+    timezoneAssumed: !sourceZoneAvailable || !!convertedStart?.assumed || !!convertedEnd?.assumed,
     topics: [row.category, ...(Array.isArray(row.tags) ? row.tags : [])]
       .filter((value) => typeof value === 'string' && value.trim())
       .map((value) => value.trim())
@@ -299,7 +257,7 @@ export function normalizeSideEvent(row) {
     category: typeof row.category === 'string' ? row.category : '',
     startsAt: typeof row.startsAt === 'string' ? row.startsAt : '',
     endsAt: typeof row.endsAt === 'string' ? row.endsAt : '',
-    timezone: typeof row.timezone === 'string' ? row.timezone : '',
+    timezone: sourceTimeZone,
     sourceUrl: row.sourceUrl,
     sourceName: typeof row.sourceName === 'string' ? row.sourceName : '',
     listingUrl: typeof row.listingUrl === 'string' ? row.listingUrl : '',
