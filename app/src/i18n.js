@@ -505,8 +505,8 @@ const english = Object.freeze({
     'This is a side event listing, not an AWS session reservation.',
   公式情報: 'Official source',
   AWS公式カタログで開く: 'Open AWS official catalog',
-  'AWS公式カタログでセッションコードを検索してください。':
-    'Search for the session code in the AWS official catalog.',
+  'セッションコードを検索条件にしてAWS公式カタログを開きます。':
+    'Opens the AWS official catalog with this session code as the search query.',
   '空席・予約状態はサンプルデータです。': 'Availability and reservation states are sample data.',
   '会場現地時間（Las Vegas）': 'Venue local time (Las Vegas)',
   コード未定: 'Code TBD',
