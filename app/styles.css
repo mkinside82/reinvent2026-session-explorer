@@ -1190,6 +1190,24 @@ input[type='checkbox'] {
   font-weight: 400;
   line-height: 1.3;
 }
+.timeline-slot.is-reserved {
+  background: #e5f4ec;
+  border-color: #c3dfce;
+  border-left-color: #258052;
+}
+.timeline-slot.is-favorite:not(.is-reserved) {
+  background: #fff5dc;
+  border-color: #ead9a7;
+  border-left-color: #b07810;
+}
+.timeline-slot.is-personal-time {
+  background: #eaf1fa;
+  border-color: #cbd9eb;
+  border-left-color: #4772a3;
+}
+.timeline-slot.is-planned:not(.is-reserved):not(.is-favorite):not(.is-personal-time) {
+  border-left-color: var(--accent);
+}
 .timeline-slot.conflicting {
   background: var(--danger-bg);
   border-color: #ebcdd1;
@@ -1230,8 +1248,58 @@ input[type='checkbox'] {
   text-overflow: ellipsis;
 }
 .slot-code {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
   font-size: 0.75rem;
   color: var(--muted);
+  min-width: 0;
+}
+.slot-code-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slot-markers {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.slot-marker,
+.ics-state {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.slot-marker.reserved,
+.ics-state.reserved {
+  color: #1d6540;
+  background: #d2eadb;
+}
+.slot-marker.favorite,
+.ics-state.favorite {
+  color: #79520a;
+  background: #f6e7b6;
+}
+.slot-marker.personal-time,
+.ics-state.personal-time {
+  color: #355b86;
+  background: #d6e3f4;
+}
+.slot-marker.planned,
+.ics-state.planned,
+.ics-state.side-event,
+.ics-state.unknown {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .free-slot {
   position: absolute;
@@ -1373,6 +1441,13 @@ input[type='checkbox'] {
   font-size: 0.75rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+.ics-export-option .ics-state-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: inherit;
 }
 .walkup-label {
   display: inline-block;

@@ -192,8 +192,31 @@ export function renderTimeline(
       .map(({ session: s, start: itemStart, end: itemEnd, lane, lanes }) => {
         const visibleStart = Math.max(itemStart, start),
           visibleEnd = Math.min(itemEnd, end),
-          japanTime = showJapanTime ? japanTimeLabel(s) : '';
-        return ui`<button data-detail="${esc(s.id)}" data-timeline-id="${esc(s.id)}" class="timeline-slot ${map.get(s.id)?.length ? 'conflicting' : ''}" style="top:${(visibleStart - start) * scale + 12}px;height:${(visibleEnd - visibleStart) * scale}px;left:calc(${(lane / lanes) * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" aria-label="${esc(s.title)}、${esc(timeLabel(s, date))}${japanTime ? `、${japanTime}` : ''}${s.uiState?.availability === 'walkUp' ? t('、Walk-up Only・事前予約不可') : ''}${s.uiState?.attendance === 'reserved' ? `、${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? `、${stateLabel('Favorite')}` : ''}${map.get(s.id)?.length ? '、Conflict' : ''}" title="${esc(s.title)}"><span class="slot-time">${esc(timeLabel(s, date))}</span><span class="slot-title">${esc(s.title)}</span><span class="slot-code">${esc(s.code)}${s.uiState?.attendance === 'reserved' ? ui` · ${stateLabel('Reserved')}` : ''}${s.uiState?.favorite ? ui` · ${stateLabel('Favorite')}` : ''}${s.uiState?.availability === 'walkUp' ? ui` · ${t('Walk-up Only')}` : ''}${map.get(s.id)?.length ? ' · Conflict' : ''}</span>${japanTime ? ui`<span class="slot-japan-time">${esc(japanTime)}</span>` : ''}</button>`;
+          japanTime = showJapanTime ? japanTimeLabel(s) : '',
+          reserved = s.uiState?.attendance === 'reserved',
+          favorite = s.uiState?.favorite === true,
+          personalTime = s.itemType === 'personalTime',
+          planned = localPlan.has(s.id) && !reserved && !favorite && !personalTime,
+          markers = [
+            ...(reserved ? [{ kind: 'reserved', label: stateLabel('Reserved') }] : []),
+            ...(favorite ? [{ kind: 'favorite', label: stateLabel('Favorite') }] : []),
+            ...(personalTime
+              ? [{ kind: 'personal-time', label: stateLabel('Personal time') }]
+              : []),
+            ...(planned ? [{ kind: 'planned', label: t('Plan') }] : []),
+          ],
+          statusText = markers.map((marker) => marker.label).join('、'),
+          slotClass = [
+            'timeline-slot',
+            reserved && 'is-reserved',
+            favorite && 'is-favorite',
+            personalTime && 'is-personal-time',
+            planned && 'is-planned',
+            map.get(s.id)?.length && 'conflicting',
+          ]
+            .filter(Boolean)
+            .join(' ');
+        return ui`<button data-detail="${esc(s.id)}" data-timeline-id="${esc(s.id)}" class="${slotClass}" style="top:${(visibleStart - start) * scale + 12}px;height:${(visibleEnd - visibleStart) * scale}px;left:calc(${(lane / lanes) * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" aria-label="${esc(s.title)}、${esc(timeLabel(s, date))}${statusText ? `、${statusText}` : ''}${japanTime ? `、${japanTime}` : ''}${s.uiState?.availability === 'walkUp' ? t('、Walk-up Only・事前予約不可') : ''}${map.get(s.id)?.length ? '、Conflict' : ''}" title="${esc(s.title)}${statusText ? ` · ${esc(statusText)}` : ''}"><span class="slot-time">${esc(timeLabel(s, date))}</span><span class="slot-title">${esc(s.title)}</span><span class="slot-code"><span class="slot-code-text">${esc(s.code)}${s.uiState?.availability === 'walkUp' ? ui` · ${t('Walk-up Only')}` : ''}${map.get(s.id)?.length ? ' · Conflict' : ''}</span>${markers.length ? ui`<span class="slot-markers">${markers.map((marker) => ui`<span class="slot-marker ${marker.kind}">${esc(marker.label)}</span>`).join('')}</span>` : ''}</span>${japanTime ? ui`<span class="slot-japan-time">${esc(japanTime)}</span>` : ''}</button>`;
       })
       .join('');
     const free = gaps

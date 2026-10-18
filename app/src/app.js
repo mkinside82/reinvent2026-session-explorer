@@ -205,22 +205,26 @@ function calendarExportItems() {
   return sortSessions([...items.values()]).map((item) => {
     const reserved = scheduleReady && state.source === 'live' && state.awsReserved.has(item.id),
       favorite = scheduleReady && state.source === 'live' && state.awsFavorites.has(item.id),
-      status =
+      statuses =
         item.itemType === 'personalTime'
-          ? stateLabel('Personal time')
+          ? [{ kind: 'personal-time', label: stateLabel('Personal time') }]
           : item.itemType === 'sideEvent'
-            ? t('イベント・体験')
+            ? [{ kind: 'side-event', label: t('イベント・体験') }]
             : !scheduleReady
-              ? t('AWS状態未確認')
-              : reserved
-                ? t('予約済み')
-                : favorite
-                  ? t('お気に入り・未予約')
-                  : t('候補・未予約');
+              ? [{ kind: 'unknown', label: t('AWS状態未確認') }]
+              : [
+                  ...(reserved ? [{ kind: 'reserved', label: t('予約済み') }] : []),
+                  ...(favorite ? [{ kind: 'favorite', label: stateLabel('Favorite') }] : []),
+                  ...(!reserved && !favorite
+                    ? [{ kind: 'planned', label: t('候補・未予約') }]
+                    : []),
+                ],
+      status = statuses.map((value) => value.label).join(getLanguage() === 'ja' ? '・' : ' · ');
     return {
       ...item,
       calendarReserved: reserved,
       calendarStatus: status,
+      calendarStatuses: statuses,
       calendarStatusLine: `${t('状態')}: ${status}`,
       calendarAvailability:
         item.uiState?.availability === 'walkUp' ? t('Walk-up Only（当日参加・予約対象外）') : '',
@@ -2290,7 +2294,7 @@ function refreshIcsExportDialog() {
             dateTime = canExport
               ? `${dateLabel(item.date)} ${displayedTime(item, item.date)}`
               : t('日時未定 · ICS出力対象外');
-          return ui`<label class="ics-export-option ${canExport ? '' : 'is-disabled'}"><input type="checkbox" data-ics-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${canExport ? '' : 'disabled'}><span><strong>${esc(item.title)}</strong><small>${esc(item.code || '')}${item.code ? ' · ' : ''}${esc(dateTime)}</small><small>${esc(item.calendarStatus)}${item.calendarAvailability ? ui` · <span class="walkup-label">${esc(item.calendarAvailability)}</span>` : ''}</small></span></label>`;
+          return ui`<label class="ics-export-option ${canExport ? '' : 'is-disabled'}"><input type="checkbox" data-ics-select="${esc(item.id)}" ${checked ? 'checked' : ''} ${canExport ? '' : 'disabled'}><span><strong>${esc(item.title)}</strong><small>${esc(item.code || '')}${item.code ? ' · ' : ''}${esc(dateTime)}</small><small class="ics-state-line">${item.calendarStatuses.map((status) => ui`<span class="ics-state ${status.kind}">${esc(status.label)}</span>`)}${item.calendarAvailability ? ui`<span class="walkup-label">${esc(item.calendarAvailability)}</span>` : ''}</small></span></label>`;
         })
         .join('')
     : `<p class="ics-export-empty">${t('検索に一致する予定はありません。')}</p>`;
