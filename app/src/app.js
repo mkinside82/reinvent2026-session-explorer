@@ -1311,6 +1311,7 @@ async function submitReservationCancellations() {
         state.reservationResults.reserved ||
           [...state.awsReserved].filter((id) => !state.reservationResults.cancelled.includes(id)),
       );
+      state.awsReserved = resolveScheduleSessionIds(state.awsReserved, state.sessions);
       state.awsScheduleFetchedAt = Date.now();
       state.awsScheduleStatus = 'ready';
     }
@@ -1752,8 +1753,29 @@ function openFilters({ preserveDraft = false } = {}) {
   if (!preserveDraft) $('#timeError').hidden = true;
   openDialog('filterDialog');
 }
+function resolveScheduleSessionIds(ids, sessions) {
+  const sessionIds = new Set(sessions.map((item) => item.id));
+  const byCode = new Map();
+  const duplicateCodes = new Set();
+  for (const item of sessions) {
+    if (!item.code) continue;
+    if (byCode.has(item.code)) duplicateCodes.add(item.code);
+    else byCode.set(item.code, item.id);
+  }
+  for (const code of duplicateCodes) byCode.delete(code);
+  return new Set(
+    [...ids]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map((value) => {
+        const id = value.trim();
+        return sessionIds.has(id) ? id : byCode.get(id) || id;
+      }),
+  );
+}
 function applySessions(sessions) {
   state.sessions = sessions;
+  state.awsReserved = resolveScheduleSessionIds(state.awsReserved, sessions);
+  state.awsFavorites = resolveScheduleSessionIds(state.awsFavorites, sessions);
   for (const item of sessions)
     if (item.uiState) {
       item.uiState.attendance = state.awsReserved.has(item.id) ? 'reserved' : 'none';

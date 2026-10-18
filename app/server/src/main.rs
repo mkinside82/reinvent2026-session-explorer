@@ -100,6 +100,7 @@ struct PersistedCatalog {
 #[derive(Default)]
 struct Catalog {
     saved: PersistedCatalog,
+    refreshing_catalog: Option<PersistedCatalog>,
     fetching: bool,
     next_token: Option<String>,
     seen_tokens: HashSet<String>,
@@ -449,12 +450,20 @@ async fn api_get(state: &AppState, url: &str) -> Result<reqwest::Response, &'sta
 }
 
 fn catalog_response(catalog: &Catalog) -> CatalogResponse {
+    let visible = if catalog.saved.items.is_empty() {
+        catalog
+            .refreshing_catalog
+            .as_ref()
+            .unwrap_or(&catalog.saved)
+    } else {
+        &catalog.saved
+    };
     CatalogResponse {
-        items: catalog.saved.items.clone(),
-        total_count: catalog.saved.total_count,
-        pages: catalog.saved.pages,
-        complete: catalog.saved.complete,
-        fetched_at: catalog.saved.fetched_at,
+        items: visible.items.clone(),
+        total_count: visible.total_count,
+        pages: visible.pages,
+        complete: visible.complete,
+        fetched_at: visible.fetched_at,
         refreshing: catalog.fetching,
         error: catalog.error.clone(),
     }
@@ -678,6 +687,7 @@ fn can_start_fetch(catalog: &Catalog, force: bool) -> bool {
         return false;
     }
     force
+        || catalog.error.is_some()
         || !catalog.saved.complete
         || catalog
             .saved
@@ -697,9 +707,7 @@ async fn start_catalog_fetch(state: AppState, account_id: String, force: bool) {
         value.retry_after = None;
         value.next_token = None;
         value.seen_tokens.clear();
-        value.saved.complete = false;
-        value.saved.total_count = None;
-        value.saved.pages = 0;
+        value.refreshing_catalog = Some(PersistedCatalog::default());
     }
     tokio::spawn(async move {
         let mut next_token: Option<String> = None;
@@ -746,20 +754,16 @@ async fn start_catalog_fetch(state: AppState, account_id: String, force: bool) {
             };
             let next = page.next_token.clone();
             let mut cache = catalog.lock().await;
-            if let Err(code) = merge_session_page(&mut cache.saved, page) {
+            let Some(refreshing_catalog) = cache.refreshing_catalog.as_mut() else {
+                failure = Some("AWS_RESPONSE_INVALID");
+                break;
+            };
+            if let Err(code) = merge_session_page(refreshing_catalog, page) {
                 failure = Some(code);
                 break;
             }
             pages += 1;
             cache.next_token = next.clone();
-            if next.is_none() {
-                cache.error = None;
-            }
-            let persisted = cache.saved.clone();
-            drop(cache);
-            let account_copy = account_id.clone();
-            let _ = tokio::task::spawn_blocking(move || persist_catalog(&account_copy, &persisted))
-                .await;
             match next {
                 Some(value) if value.is_empty() => {
                     failure = Some("AWS_RESPONSE_INVALID");
@@ -773,9 +777,17 @@ async fn start_catalog_fetch(state: AppState, account_id: String, force: bool) {
         cache.fetching = false;
         cache.next_token = None;
         if let Some(code) = failure {
-            cache.saved.complete = false;
             cache.error = Some(code.to_owned());
             cache.retry_after = Some(Instant::now() + ERROR_RETRY_DELAY);
+            if cache.saved.items.is_empty() {
+                cache.saved = cache.refreshing_catalog.take().unwrap_or_default();
+            } else {
+                cache.refreshing_catalog = None;
+            }
+        } else {
+            cache.saved = cache.refreshing_catalog.take().unwrap_or_default();
+            cache.error = None;
+            cache.retry_after = None;
         }
         let persisted = cache.saved.clone();
         drop(cache);
