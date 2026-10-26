@@ -156,6 +156,11 @@ function matches(s, filters) {
     );
   if (query && !searchText.get(s).includes(query)) return false;
   if (filters.walkUpOnly && s.uiState?.availability !== 'walkUp') return false;
+  const availability = selections(filters.availability);
+  if (availability.length) {
+    if (s.dataSource !== 'aws' || s.itemType !== 'session') return false;
+    if (!availability.includes(s.uiState?.availability || 'unknown')) return false;
+  }
   const reservability = selections(filters.reservability);
   if (reservability.length) {
     if (s.dataSource !== 'aws' || s.itemType !== 'session') return false;

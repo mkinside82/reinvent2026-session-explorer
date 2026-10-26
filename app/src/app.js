@@ -181,6 +181,7 @@ const FACET_LABELS = {
   venue: '会場',
   service: 'Service',
   speaker: 'Speaker',
+  availability: '空席状況',
   reservability: '予約可否',
   walkUpOnly: 'Walk-up Only',
 };
@@ -1672,6 +1673,16 @@ function findGap(date, from, to) {
 function buildFacets() {
   const source = state.exploreKind === 'sideEvents' ? state.sideEvents : state.sessions;
   for (const key of MULTI_KEYS) {
+    if (key === 'availability') {
+      facets[key] = [
+        ...new Set(
+          source
+            .filter((s) => s.dataSource === 'aws' && s.itemType === 'session')
+            .map((s) => s.uiState?.availability || 'unknown'),
+        ),
+      ].sort();
+      continue;
+    }
     if (key === 'reservability') {
       facets[key] = [
         ...new Set(
@@ -1698,6 +1709,19 @@ function buildFacets() {
 }
 function facetValueLabel(key, value) {
   if (key === 'date') return dateLabel(value);
+  if (key === 'availability')
+    return value === 'unknown'
+      ? t('空席状況不明')
+      : stateLabel(
+          {
+            available: 'Available',
+            limited: 'Limited',
+            veryLimited: 'Very limited',
+            unavailable: 'Unavailable',
+            walkUp: 'Walk-up',
+            full: 'Full',
+          }[value] || 'Unavailable',
+        );
   if (key === 'reservability')
     return t(
       { yes: 'AWS予約対象', no: '予約対象外', unknown: '予約可否不明' }[value] || '予約可否不明',
@@ -1743,12 +1767,12 @@ function openFilters({ preserveDraft = false } = {}) {
     .join('');
   if (!sideMode) {
     const walkupFilter = ui`<fieldset class="facet-group walkup-filter"><legend>${t('参加方法')}</legend><label class="facet-option"><input id="walkUpOnlyFilter" type="checkbox" ${state.draft.walkUpOnly ? 'checked' : ''}><span>${t('Walk-up Only（当日参加のみ）')}</span></label><p class="hint">${t('事前予約なしで現地参加するセッションに絞り込みます。')}</p></fieldset>`;
-    const reservabilityFilter = state.sessions.some(
+    const awsSessionFilter = state.sessions.some(
       (s) => s.dataSource === 'aws' && s.itemType === 'session',
     )
-      ? `${renderFacet('reservability')}${t('<p class="hint">AWSカタログの予約対象区分です。空席状況とは別で、実際の予約はAWS側が判定します。</p>')}`
+      ? `${renderFacet('availability')}${renderFacet('reservability')}${t('<p class="hint">空席状況とAWSカタログの予約対象区分は別項目です。両方選ぶと条件をANDで適用します。予約実行可否はAWS側が最終判定します。</p>')}`
       : '';
-    $('#facetFields').innerHTML = walkupFilter + reservabilityFilter + $('#facetFields').innerHTML;
+    $('#facetFields').innerHTML = walkupFilter + awsSessionFilter + $('#facetFields').innerHTML;
   }
   $('#from').value = preserveDraft ? draftFrom : state.filters.from;
   $('#to').value = preserveDraft ? draftTo : state.filters.to;

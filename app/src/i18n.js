@@ -151,6 +151,10 @@ const english = Object.freeze({
   予約対象外: 'Not eligible for AWS reservation',
   予約可否不明: 'Reservation eligibility unknown',
   予約可否: 'Reservation eligibility',
+  空席状況: 'Seat availability',
+  空席状況不明: 'Availability unknown',
+  '空席状況とAWSカタログの予約対象区分は別項目です。両方選ぶと条件をANDで適用します。予約実行可否はAWS側が最終判定します。':
+    'Seat availability and AWS catalog reservation eligibility are separate filters. Selecting both applies AND conditions; AWS makes the final reservation decision.',
   日本時間: 'Japan time',
   日本時間も表示: 'Also show Japan time',
   'AWSカタログの予約対象区分です。空席状況とは別で、実際の予約はAWS側が判定します。':

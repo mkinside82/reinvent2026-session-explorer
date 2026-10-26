@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
-import { adaptDemoData } from '../src/session-data.js';
+import { adaptAwsSessions, adaptDemoData } from '../src/session-data.js';
 import {
   createCatalog,
   filterSessions,
@@ -39,6 +39,45 @@ test('multi facets OR within each dimension, AND across dimensions; service and 
     'location facet also includes the venue/building name',
   );
 });
+test('seat availability and AWS reservation eligibility combine with AND semantics', () => {
+  const sessions = adaptAwsSessions([
+    {
+      sessionId: 'unavailable-reservable',
+      title: 'Unavailable but reservable',
+      seatAvailability: 'unavailable',
+      isReservable: true,
+    },
+    {
+      sessionId: 'unavailable-ineligible',
+      title: 'Unavailable and ineligible',
+      seatAvailability: 'unavailable',
+      isReservable: false,
+    },
+    {
+      sessionId: 'available-reservable',
+      title: 'Available and reservable',
+      seatAvailability: 'available',
+      isReservable: true,
+    },
+    {
+      sessionId: 'unknown-reservable',
+      title: 'Availability unknown',
+      isReservable: true,
+    },
+  ]);
+  const unavailable = filterSessions(sessions, { availability: ['unavailable'] });
+  assert.deepEqual(
+    unavailable.map((session) => session.id),
+    ['unavailable-reservable', 'unavailable-ineligible'],
+  );
+  assert.deepEqual(
+    filterSessions(sessions, {
+      availability: ['unavailable'],
+      reservability: ['yes'],
+    }).map((session) => session.id),
+    ['unavailable-reservable'],
+  );
+});
 test('free gaps merge overlapping reservations and a contained search excludes partial overlaps', () => {
   const s = (a, b) =>
     normalizeSession({ id: a, code: a, date: '2026-12-01', startTime: a, endTime: b });
@@ -73,6 +112,8 @@ test('URL state round trips multi selections, unicode query, view and unrelated 
       date: ['2026-12-01', '2026-12-02'],
       level: ['200', '300'],
       topic: ['Architecture', 'Agents'],
+      availability: ['unavailable'],
+      reservability: ['yes'],
       from: '10:00',
       to: '12:00',
       fit: 'contained',
